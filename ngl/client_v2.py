@@ -26,8 +26,8 @@ class NotionGameListV2:
     PAGE_COVER = "https://images.unsplash.com/photo-1559984430-c12e199879b6?ixlib=rb-1.2.1&q=85&fm=jpg&crop=entropy&cs=srgb&ixid=eyJhcHBfaWQiOjYzOTIxfQ"
     # 默认页面图标
     PAGE_ICON = "🎮"
-    # API 版本（使用稳定版本）
-    NOTION_VERSION = "2022-06-28"
+    # API 版本（使用最新稳定版本）
+    NOTION_VERSION = "2025-09-03"
     # API 基础URL
     API_BASE_URL = "https://api.notion.com/v1"
 
@@ -44,6 +44,8 @@ class NotionGameListV2:
         self._gl_icon = "👾"  # 游戏列表图标
         self._database_id = None
         self._db_properties_cache = None  # 缓存数据库属性
+        self._is_new_database = False  # 标记数据库是否为新建的
+        self._data_source_id = None  # 数据源ID（用于新API版本）
         self._headers = {
             "Authorization": f"Bearer {token}",
             "Notion-Version": self.NOTION_VERSION,
@@ -150,6 +152,7 @@ class NotionGameListV2:
             schema = self._game_list_schema()
             echo.c(f"准备创建的属性架构: {list(schema.keys())}")
             
+            # 使用 2025-09-03 API 版本的新格式：属性定义在 initial_data_source 下
             database_response = self._make_request(
                 "POST",
                 "/databases",
@@ -170,24 +173,61 @@ class NotionGameListV2:
                         "type": "emoji",
                         "emoji": self._gl_icon
                     },
-                    "properties": schema
+                    "initial_data_source": {
+                        "properties": schema
+                    }
                 }
             )
             
             database_data = database_response.json()
             self._database_id = database_data["id"]
+            self._is_new_database = True  # 标记为新创建的数据库
             
             # 缓存数据库属性
+            # 2025-09-03 版本：属性可能在 properties 中（向后兼容）或需要从 data_sources 获取
             self._db_properties_cache = database_data.get("properties", {})
+            
+            # 如果属性为空，尝试从 data_sources 获取（新版本格式）
+            if not self._db_properties_cache and "data_sources" in database_data:
+                data_sources = database_data.get("data_sources", [])
+                if data_sources:
+                    # 获取第一个数据源的属性（初始数据源）
+                    echo.y("从 data_sources 获取属性...")
+                    data_source_id = data_sources[0].get("id")
+                    if data_source_id:
+                        self._data_source_id = data_source_id  # 保存数据源ID
+                        # 查询数据源以获取属性
+                        try:
+                            ds_response = self._make_request("GET", f"/data_sources/{data_source_id}")
+                            ds_data = ds_response.json()
+                            self._db_properties_cache = ds_data.get("properties", {})
+                        except Exception as e:
+                            echo.y(f"从 data_source 获取属性失败: {e}")
+            else:
+                # 即使属性不为空，也检查是否有 data_sources（用于查询）
+                if "data_sources" in database_data:
+                    data_sources = database_data.get("data_sources", [])
+                    if data_sources:
+                        data_source_id = data_sources[0].get("id")
+                        if data_source_id:
+                            self._data_source_id = data_source_id  # 保存数据源ID
+            
             echo.g(f"数据库创建成功: {self._database_id}")
             
-            # 如果属性为空，尝试重新获取数据库信息
+            # 如果属性仍然为空，尝试重新获取数据库信息
             if not self._db_properties_cache:
                 echo.y("数据库属性为空，重新获取数据库信息...")
                 time.sleep(0.5)  # 等待数据库完全创建
                 db_get_response = self._make_request("GET", f"/databases/{self._database_id}")
                 db_get_data = db_get_response.json()
                 self._db_properties_cache = db_get_data.get("properties", {})
+                # 重新获取时也检查 data_sources
+                if "data_sources" in db_get_data:
+                    data_sources = db_get_data.get("data_sources", [])
+                    if data_sources:
+                        data_source_id = data_sources[0].get("id")
+                        if data_source_id:
+                            self._data_source_id = data_source_id  # 保存数据源ID
             
             if self._db_properties_cache:
                 echo.c(f"数据库属性: {', '.join(self._db_properties_cache.keys())}")
@@ -214,12 +254,65 @@ class NotionGameListV2:
             database_id: 数据库ID
         """
         self._database_id = database_id
+        self._is_new_database = False  # 标记为已存在的数据库
         # 获取并缓存数据库属性
         db_response = self._make_request("GET", f"/databases/{database_id}")
         db_data = db_response.json()
         self._db_properties_cache = db_data.get("properties", {})
         echo.g(f"已连接到数据库: {database_id}")
-        echo.c(f"数据库属性: {', '.join(self._db_properties_cache.keys())}")
+        
+        # 如果属性为空，尝试从 data_sources 获取（新版本格式 2025-09-03）
+        if not self._db_properties_cache and "data_sources" in db_data:
+            data_sources = db_data.get("data_sources", [])
+            if data_sources:
+                # 获取第一个数据源的属性（初始数据源）
+                echo.y("从 data_sources 获取属性...")
+                data_source_id = data_sources[0].get("id")
+                if data_source_id:
+                    self._data_source_id = data_source_id  # 保存数据源ID
+                    # 查询数据源以获取属性
+                    try:
+                        ds_response = self._make_request("GET", f"/data_sources/{data_source_id}")
+                        ds_data = ds_response.json()
+                        self._db_properties_cache = ds_data.get("properties", {})
+                        echo.g("成功从 data_sources 获取属性")
+                    except Exception as e:
+                        echo.y(f"从 data_source 获取属性失败: {e}")
+        else:
+            # 即使属性不为空，也检查是否有 data_sources（用于查询）
+            if "data_sources" in db_data:
+                data_sources = db_data.get("data_sources", [])
+                if data_sources:
+                    data_source_id = data_sources[0].get("id")
+                    if data_source_id:
+                        self._data_source_id = data_source_id  # 保存数据源ID
+        
+        # 检查属性是否为空
+        if not self._db_properties_cache:
+            echo.r("警告：数据库属性为空！")
+            echo.y("这可能是因为：")
+            echo.y("1. 数据库没有定义任何属性")
+            echo.y("2. API 响应格式不同，请检查 Notion API 版本")
+            echo.y("3. 数据库权限不足")
+            # 尝试打印完整的响应以便调试
+            debug_mode = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes", "on")
+            if debug_mode:
+                echo.c(f"数据库响应: {db_data}")
+        else:
+            echo.c(f"数据库属性: {', '.join(self._db_properties_cache.keys())}")
+        
+        # 验证是否有标题属性
+        title_prop_name = None
+        for prop_name, prop_data in self._db_properties_cache.items():
+            if prop_data.get("type") == "title":
+                title_prop_name = prop_name
+                break
+        
+        if not title_prop_name:
+            echo.r("错误：数据库中未找到标题类型的属性！")
+            echo.y("Notion 数据库必须包含至少一个标题类型的属性才能添加页面。")
+            echo.y("请在 Notion 中为数据库添加一个标题类型的属性（通常是 'Name' 或 '游戏名'）。")
+            raise NotionApiError(msg="数据库中未找到标题属性，无法添加游戏。请先在 Notion 中为数据库添加一个标题类型的属性。")
 
     def get_existing_game_names(self) -> tp.Set[str]:
         """
@@ -253,6 +346,15 @@ class NotionGameListV2:
         next_cursor = None
         
         # 分页查询所有页面
+        # 在 2025-09-03 API 版本中，如果数据库使用 data_sources，需要使用 data_source_id 查询
+        query_endpoint = None
+        if self._data_source_id:
+            # 使用新API版本：通过 data_source_id 查询
+            query_endpoint = f"/data_sources/{self._data_source_id}/query"
+        else:
+            # 使用旧API版本：通过 database_id 查询
+            query_endpoint = f"/databases/{self._database_id}/query"
+        
         while True:
             query_payload = {
                 "page_size": 100  # Notion API 最大页面大小
@@ -262,7 +364,7 @@ class NotionGameListV2:
             
             response = self._make_request(
                 "POST",
-                f"/databases/{self._database_id}/query",
+                query_endpoint,
                 json=query_payload
             )
             data = response.json()
@@ -386,7 +488,25 @@ class NotionGameListV2:
                     break
             
             if not title_prop_name:
-                raise NotionApiError(msg="数据库中未找到标题属性")
+                # 如果属性缓存为空，尝试重新获取
+                if not db_properties:
+                    echo.y("数据库属性为空，尝试重新获取...")
+                    db_response = self._make_request("GET", f"/databases/{self._database_id}")
+                    db_data = db_response.json()
+                    self._db_properties_cache = db_data.get("properties", {})
+                    db_properties = self._db_properties_cache
+                    
+                    # 再次查找标题属性
+                    for prop_name, prop_data in db_properties.items():
+                        if prop_data.get("type") == "title":
+                            title_prop_name = prop_name
+                            break
+                
+                if not title_prop_name:
+                    error_msg = "数据库中未找到标题属性"
+                    echo.r(f"错误：{error_msg}")
+                    echo.y("提示：Notion 数据库必须包含至少一个标题类型的属性才能添加页面。")
+                    raise NotionApiError(msg=error_msg)
             
             # 准备属性数据，使用实际的属性名称
             properties = {
@@ -475,7 +595,7 @@ class NotionGameListV2:
             
             # 创建页面
             response = self._make_request("POST", "/pages", json=payload)
-            page_data = response.json()
+            # page_data = response.json()
             
             return True
             
@@ -501,15 +621,32 @@ class NotionGameListV2:
         total = len(game_list)
         
         # 如果需要去重，先获取已有游戏名称
+        # 注意：新建的数据库肯定是空的，不需要检查
         existing_names = None
         if skip_duplicates:
-            echo.y("正在查询已有游戏...")
-            try:
-                existing_names = self.get_existing_game_names()
-                echo.g(f"数据库中已有 {len(existing_names)} 个游戏")
-            except Exception as e:
-                echo.r(f"查询已有游戏失败: {e}，将继续导入但可能产生重复")
-                skip_duplicates = False
+            # 如果是新建的数据库，跳过检查（肯定是空的）
+            if self._is_new_database:
+                echo.y("新建数据库，跳过已有游戏检查")
+                existing_names = set()  # 空集合，表示没有已有游戏
+            else:
+                # 对于已有数据库，尝试获取已有游戏名称
+                echo.y("正在查询已有游戏...")
+                try:
+                    existing_names = self.get_existing_game_names()
+                    echo.g(f"数据库中已有 {len(existing_names)} 个游戏")
+                except NotionApiError as e:
+                    # 如果是因为找不到标题属性而失败，给出更明确的提示
+                    if "标题属性" in str(e):
+                        echo.r(f"查询已有游戏失败: {e}，将继续导入但可能产生重复")
+                        echo.y("提示：请确保数据库包含一个标题类型的属性")
+                    else:
+                        echo.r(f"查询已有游戏失败: {e}，将继续导入但可能产生重复")
+                    skip_duplicates = False
+                    existing_names = None
+                except Exception as e:
+                    echo.r(f"查询已有游戏失败: {e}，将继续导入但可能产生重复")
+                    skip_duplicates = False
+                    existing_names = None
         
         imported_count = 0
         skipped_count = 0
