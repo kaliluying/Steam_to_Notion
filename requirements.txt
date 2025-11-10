@@ -1,0 +1,7 @@
+# 核心依赖
+requests>=2.3.0
+python-dotenv>=1.0.0
+
+# 终端输出和颜色支持
+termcolor>=1.1.0
+colorama>=0.4.3
