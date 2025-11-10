@@ -181,7 +181,7 @@ class SteamGamesLibrary(GamesLibrary):
             api_key = input(color.c("Token: ")).strip()
         if user_id is None:
             echo.y("请输入Steam用户个人资料ID。")
-            user_id = input(color.c("User: http://steamcommunity.com/id/")).strip()
+            user_id = input(color.c("User: http://steamcommunity.com/profiles/")).strip()
             # 移除URL前缀，只保留用户ID
             user_id = re.sub(r"^https?:\/\/steamcommunity\.com\/id\/", "", user_id)
         return cls(api_key=api_key, user_id=user_id)
