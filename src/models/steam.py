@@ -2,6 +2,7 @@
 Steam数据模型
 定义Steam商店API返回的数据结构
 """
+
 import typing as tp
 
 from src.models.base import BaseModel
@@ -21,11 +22,11 @@ class SteamStoreAppPriceOverview(BaseModel):
         discount_percent: int,
         initial_formatted: str,
         final_formatted: str,
-        **kwargs
+        **kwargs,
     ):
         """
         初始化价格概览
-        
+
         Args:
             currency: 货币代码
             initial: 原价（分）
@@ -59,11 +60,11 @@ class SteamStoreAppPackageGroupSub(BaseModel):
         can_get_free_license: str,
         is_free_license: bool,
         price_in_cents_with_discount: int,
-        **kwargs
+        **kwargs,
     ):
         """
         初始化包组子项
-        
+
         Args:
             packageid: 包ID
             percent_savings_text: 节省百分比文本
@@ -100,11 +101,11 @@ class SteamStoreAppPackageGroup(BaseModel):
         save_text: str,
         display_type: int,
         is_recurring_subscription: str,
-        subs: tp.List[SteamStoreAppPackageGroupSub]
+        subs: tp.List[SteamStoreAppPackageGroupSub],
     ):
         """
         初始化包组
-        
+
         Args:
             name: 包组名称
             title: 包组标题
@@ -128,10 +129,10 @@ class SteamStoreAppPackageGroup(BaseModel):
     def load(cls, d: tp.Optional[dict]):
         """
         从字典加载包组对象，递归加载子项
-        
+
         Args:
             d: 包含包组数据的字典
-            
+
         Returns:
             SteamStoreAppPackageGroup实例或None
         """
@@ -150,7 +151,7 @@ class SteamStoreAppCategory(BaseModel):
     def __init__(self, id: int, description: str, **kwargs):
         """
         初始化分类
-        
+
         Args:
             id: 分类ID
             description: 分类描述
@@ -169,7 +170,7 @@ class SteamStoreAppGenre(BaseModel):
     def __init__(self, id: str, description: str, **kwargs):
         """
         初始化类型
-        
+
         Args:
             id: 类型ID
             description: 类型描述
@@ -188,7 +189,7 @@ class SteamStoreAppScreenshot(BaseModel):
     def __init__(self, id: int, path_thumbnail: str, path_full: str, **kwargs):
         """
         初始化截图
-        
+
         Args:
             id: 截图ID
             path_thumbnail: 缩略图路径
@@ -214,11 +215,11 @@ class SteamStoreAppMovie(BaseModel):
         webm: tp.Dict[str, str],
         mp4: tp.Dict[str, str],
         highlight: bool,
-        **kwargs
+        **kwargs,
     ):
         """
         初始化视频
-        
+
         Args:
             id: 视频ID
             name: 视频名称
@@ -245,7 +246,7 @@ class SteamStoreAppMetacriticScore(BaseModel):
     def __init__(self, score: int, url: tp.Optional[str] = None, **kwargs):
         """
         初始化Metacritic评分
-        
+
         Args:
             score: 评分分数
             url: 评分页面URL（可选）
@@ -264,7 +265,7 @@ class SteamStoreAppAchievementHighlighted(BaseModel):
     def __init__(self, name: str, path: str, **kwargs):
         """
         初始化高亮成就
-        
+
         Args:
             name: 成就名称
             path: 成就图标路径
@@ -280,10 +281,15 @@ class SteamStoreAppAchievements(BaseModel):
     表示游戏的成就信息
     """
 
-    def __init__(self, total: int, highlighted: tp.List[SteamStoreAppAchievementHighlighted], **kwargs):
+    def __init__(
+        self,
+        total: int,
+        highlighted: tp.List[SteamStoreAppAchievementHighlighted],
+        **kwargs,
+    ):
         """
         初始化成就
-        
+
         Args:
             total: 总成就数
             highlighted: 高亮成就列表
@@ -296,16 +302,19 @@ class SteamStoreAppAchievements(BaseModel):
     def load(cls, d: tp.Optional[dict]):
         """
         从字典加载成就对象，递归加载高亮成就
-        
+
         Args:
             d: 包含成就数据的字典
-            
+
         Returns:
             SteamStoreAppAchievements实例或None
         """
         if d is None:
             return None
-        d["highlighted"] = [SteamStoreAppAchievementHighlighted.load(t) for t in d.get("highlighted", [])]
+        d["highlighted"] = [
+            SteamStoreAppAchievementHighlighted.load(t)
+            for t in d.get("highlighted", [])
+        ]
         return cls(**d)
 
 
@@ -318,7 +327,7 @@ class SteamStoreAppReleaseDate(BaseModel):
     def __init__(self, coming_soon: bool, date: str, **kwargs):
         """
         初始化发布日期
-        
+
         Args:
             coming_soon: 是否即将发布
             date: 发布日期字符串
@@ -337,7 +346,7 @@ class SteamStoreAppSupportInfo(BaseModel):
     def __init__(self, url: str, email: str, **kwargs):
         """
         初始化支持信息
-        
+
         Args:
             url: 支持页面URL
             email: 支持邮箱
@@ -356,7 +365,7 @@ class SteamStoreAppContentDescriptors(BaseModel):
     def __init__(self, ids: tp.List[int], notes: str, **kwargs):
         """
         初始化内容描述符
-        
+
         Args:
             ids: 内容描述符ID列表
             notes: 备注说明
@@ -413,7 +422,7 @@ class SteamStoreApp(BaseModel):
     ):
         """
         初始化Steam商店应用对象
-        
+
         Args:
             type: 应用类型（如"game"）
             name: 游戏名称
@@ -493,10 +502,10 @@ class SteamStoreApp(BaseModel):
         """
         从字典加载Steam商店应用对象
         递归加载所有嵌套的对象和列表
-        
+
         Args:
             d: 包含应用数据的字典
-            
+
         Returns:
             SteamStoreApp实例或None
         """
@@ -505,10 +514,18 @@ class SteamStoreApp(BaseModel):
         # 递归加载所有嵌套对象
         d["release_date"] = SteamStoreAppReleaseDate.load(d["release_date"])
         d["support_info"] = SteamStoreAppSupportInfo.load(d["support_info"])
-        d["package_groups"] = [SteamStoreAppPackageGroup.load(t) for t in d["package_groups"]]
-        d["content_descriptors"] = SteamStoreAppContentDescriptors.load(d.get("content_descriptors"))
-        d["screenshots"] = [SteamStoreAppScreenshot.load(t) for t in d.get("screenshots", [])]
-        d["categories"] = [SteamStoreAppCategory.load(t) for t in d.get("categories", [])]
+        d["package_groups"] = [
+            SteamStoreAppPackageGroup.load(t) for t in d["package_groups"]
+        ]
+        d["content_descriptors"] = SteamStoreAppContentDescriptors.load(
+            d.get("content_descriptors")
+        )
+        d["screenshots"] = [
+            SteamStoreAppScreenshot.load(t) for t in d.get("screenshots", [])
+        ]
+        d["categories"] = [
+            SteamStoreAppCategory.load(t) for t in d.get("categories", [])
+        ]
         d["genres"] = [SteamStoreAppGenre.load(t) for t in d.get("genres", [])]
         d["achievements"] = SteamStoreAppAchievements.load(d.get("achievements"))
         d["metacritic"] = SteamStoreAppMetacriticScore.load(d.get("metacritic"))

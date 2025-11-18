@@ -1,7 +1,13 @@
 """
 主程序入口文件
 用于将Steam游戏库导入到Notion中
+
+Copyright (c) 2020 solesensei
+Copyright (c) 2025 kaliluying
+
+MIT License
 """
+
 import os
 import re
 import sys
@@ -16,13 +22,13 @@ from src.utils import echo, color, soft_exit
 
 # 加载 .env 文件
 # 支持打包成exe后的路径：优先使用exe所在目录，否则使用脚本所在目录
-if getattr(sys, 'frozen', False):
+if getattr(sys, "frozen", False):
     # 打包成exe后的情况
     base_path = Path(sys.executable).parent
 else:
     # 正常Python脚本运行
     base_path = Path(__file__).parent
-env_path = base_path / '.env'
+env_path = base_path / ".env"
 load_dotenv(env_path)
 
 # ----------- 从 .env 文件读取配置 -----------
@@ -48,12 +54,37 @@ else:
     STEAM_USER = None
 
 # 导入选项（布尔值，从字符串转换）
-STORE_BG_COVER = os.getenv("STORE_BG_COVER", "false").lower() in ("true", "1", "yes", "on")
-SKIP_NON_STEAM = os.getenv("SKIP_NON_STEAM", "false").lower() in ("true", "1", "yes", "on")
-USE_ONLY_LIBRARY = os.getenv("USE_ONLY_LIBRARY", "false").lower() in ("true", "1", "yes", "on")
-SKIP_FREE_STEAM = os.getenv("SKIP_FREE_STEAM", "false").lower() in ("true", "1", "yes", "on")
+STORE_BG_COVER = os.getenv("STORE_BG_COVER", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+    "on",
+)
+SKIP_NON_STEAM = os.getenv("SKIP_NON_STEAM", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+    "on",
+)
+USE_ONLY_LIBRARY = os.getenv("USE_ONLY_LIBRARY", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+    "on",
+)
+SKIP_FREE_STEAM = os.getenv("SKIP_FREE_STEAM", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+    "on",
+)
 STEAM_CACHE = os.getenv("STEAM_CACHE", "true").lower() in ("true", "1", "yes", "on")
-ALLOW_DUPLICATES = os.getenv("ALLOW_DUPLICATES", "false").lower() in ("true", "1", "yes", "on")
+ALLOW_DUPLICATES = os.getenv("ALLOW_DUPLICATES", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+    "on",
+)
 
 # 测试限制（可选）
 TEST_LIMIT = os.getenv("TEST_LIMIT")
@@ -80,16 +111,20 @@ try:
 
     # 验证参数组合的有效性
     if SKIP_NON_STEAM and USE_ONLY_LIBRARY:
-        raise ServiceError(msg="不能同时设置 SKIP_NON_STEAM 和 USE_ONLY_LIBRARY 为 true")
+        raise ServiceError(
+            msg="不能同时设置 SKIP_NON_STEAM 和 USE_ONLY_LIBRARY 为 true"
+        )
 
     # 登录Notion
     echo.y("正在登录Notion...")
     # 如果使用已有数据库，NOTION_PAGE_ID 不是必需的
     if not NOTION_DATABASE_ID and not NOTION_PAGE_ID:
-        raise ServiceError(msg="未配置 NOTION_PAGE_ID 或 NOTION_DATABASE_ID，请在 .env 文件中设置至少一个")
+        raise ServiceError(
+            msg="未配置 NOTION_PAGE_ID 或 NOTION_DATABASE_ID，请在 .env 文件中设置至少一个"
+        )
     ngl = NotionGameList.login(token=NOTION_TOKEN, parent_page_id=NOTION_PAGE_ID)
     echo.g("Notion登录成功！")
-    
+
     # 登录Steam
     echo.y("正在登录Steam...")
     steam = SteamGamesLibrary.login(api_key=STEAM_TOKEN, user_id=STEAM_USER)
@@ -101,14 +136,17 @@ try:
         echo.y(f"测试模式：限制获取 {TEST_LIMIT} 个游戏")
     game_list = sorted(
         [
-            steam.get_game_info(id_) for id_ in steam.get_games_list(
+            steam.get_game_info(id_)
+            for id_ in steam.get_games_list(
                 skip_non_steam=SKIP_NON_STEAM,
                 skip_free_games=SKIP_FREE_STEAM,
                 library_only=USE_ONLY_LIBRARY,
                 cache=STEAM_CACHE,
                 limit=TEST_LIMIT,  # 在获取时就限制数量
             )
-        ], key=lambda x: x.playtime_minutes or 0, reverse=True  # 按游戏时长从高到低排序
+        ],
+        key=lambda x: x.playtime_minutes or 0,
+        reverse=True,  # 按游戏时长从高到低排序
     )
     if not game_list:
         raise ServiceError(msg="未找到Steam游戏")
@@ -126,20 +164,20 @@ try:
         echo.y("正在创建Notion模板页面...")
         game_page = ngl.create_game_page()
         echo.g("创建成功！")
-    
+
     # 测试模式：双重保险，确保不超过限制（如果获取时没有完全限制）
     if TEST_LIMIT and TEST_LIMIT > 0 and len(game_list) > TEST_LIMIT:
         echo.y(f"测试模式：只导入前 {TEST_LIMIT} 个游戏（共 {len(game_list)} 个）")
         game_list = game_list[:TEST_LIMIT]
-    
+
     # 将Steam游戏库导入到Notion
     echo.y("正在将Steam游戏库导入到Notion...")
     # skip_duplicates: 默认跳过重复，除非在 .env 中设置 ALLOW_DUPLICATES=true
     errors = ngl.import_game_list(
-        game_list, 
-        None, 
+        game_list,
+        None,
         skip_duplicates=not ALLOW_DUPLICATES,
-        use_bg_as_cover=STORE_BG_COVER
+        use_bg_as_cover=STORE_BG_COVER,
     )
     imported = len(game_list) - len(errors)
 

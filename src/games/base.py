@@ -2,6 +2,7 @@
 游戏库基础模块
 定义游戏信息类和游戏库抽象基类
 """
+
 import typing as tp
 
 from abc import abstractmethod, ABCMeta
@@ -27,11 +28,11 @@ class GameInfo:
         logo_uri: tp.Optional[str] = None,
         bg_uri: tp.Optional[str] = None,
         icon_uri: tp.Optional[str] = None,
-        free: bool = False
+        free: bool = False,
     ):
         """
         初始化游戏信息
-        
+
         Args:
             id: 游戏唯一标识符
             name: 游戏名称
@@ -58,7 +59,7 @@ class GameInfo:
     def to_dict(self):
         """
         将游戏信息转换为字典
-        
+
         Returns:
             dict: 游戏信息的字典表示
         """
@@ -75,7 +76,7 @@ class GamesLibrary(metaclass=ABCMeta):
     def get_games_list(self) -> tp.List[TGameID]:
         """
         从游戏库获取游戏ID列表（抽象方法）
-        
+
         Returns:
             List[TGameID]: 游戏ID列表
         """
@@ -85,10 +86,10 @@ class GamesLibrary(metaclass=ABCMeta):
     def get_game_info(self, game_id: TGameID) -> GameInfo:
         """
         根据游戏ID获取游戏信息（抽象方法）
-        
+
         Args:
             game_id: 游戏ID
-            
+
         Returns:
             GameInfo: 游戏信息对象
         """

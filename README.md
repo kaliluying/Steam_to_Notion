@@ -78,9 +78,9 @@ DEBUG=false
 
    ![image-20251118170958903](https://gmlblog.oss-cn-hangzhou.aliyuncs.com/img/image-20251118170958903.png)
 
-5.  (可选) 获取数据库ID（从 Notion 页面 URL 中获取）到`NOTION_DATABASE_ID`
+5. (可选) 获取数据库 ID（从 Notion 页面 URL 中获取）到`NOTION_DATABASE_ID`
 
-   ![image-20251118171356096](https://gmlblog.oss-cn-hangzhou.aliyuncs.com/img/image-20251118171356096.png)
+![image-20251118171356096](https://gmlblog.oss-cn-hangzhou.aliyuncs.com/img/image-20251118171356096.png)
 
 #### Steam API Key
 
@@ -164,6 +164,7 @@ TEST_LIMIT=10
 #### 4. 自定义游戏状态
 
 导入后，可以在 Notion 中手动修改游戏状态：
+
 - 通关
 - 游玩中
 - 计划中
@@ -175,6 +176,7 @@ TEST_LIMIT=10
 程序会在项目目录下创建 `game_info_cache.json` 文件来缓存游戏信息：
 
 - **启用缓存**（`STEAM_CACHE=true`，默认）：
+
   - 首次运行：获取所有游戏信息并保存到缓存
   - 后续运行：只获取新游戏信息，已缓存的游戏直接使用缓存
   - 优点：大幅加快重复导入速度
@@ -204,33 +206,33 @@ TEST_LIMIT=10
 
 ### Notion 配置
 
-| 配置项 | 说明 | 必需 |
-|--------|------|------|
-| `NOTION_TOKEN` | Notion Integration Token | ✅ |
-| `NOTION_PAGE_ID` | 父页面 ID（用于创建新数据库） | ⚠️* |
-| `NOTION_DATABASE_ID` | 已有数据库 ID（连接到已有数据库） | ⚠️* |
+| 配置项               | 说明                              | 必需 |
+| -------------------- | --------------------------------- | ---- |
+| `NOTION_TOKEN`       | Notion Integration Token          | ✅   |
+| `NOTION_PAGE_ID`     | 父页面 ID（用于创建新数据库）     | ⚠️\* |
+| `NOTION_DATABASE_ID` | 已有数据库 ID（连接到已有数据库） | ⚠️\* |
 
-*至少需要配置 `NOTION_PAGE_ID` 或 `NOTION_DATABASE_ID` 中的一个
+\*至少需要配置 `NOTION_PAGE_ID` 或 `NOTION_DATABASE_ID` 中的一个
 
 ### Steam 配置
 
-| 配置项 | 说明 | 必需 |
-|--------|------|------|
-| `STEAM_TOKEN` | Steam API Key | ✅ |
-| `STEAM_USER` | Steam 用户 ID（数字ID或用户名） | ✅ |
+| 配置项        | 说明                              | 必需 |
+| ------------- | --------------------------------- | ---- |
+| `STEAM_TOKEN` | Steam API Key                     | ✅   |
+| `STEAM_USER`  | Steam 用户 ID（数字 ID 或用户名） | ✅   |
 
 ### 导入选项
 
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `STORE_BG_COVER` | `false` | 使用 Steam 商店背景作为游戏封面 |
-| `SKIP_NON_STEAM` | `false` | 跳过 Steam 商店中已下架的游戏 |
+| 配置项             | 默认值  | 说明                                      |
+| ------------------ | ------- | ----------------------------------------- |
+| `STORE_BG_COVER`   | `false` | 使用 Steam 商店背景作为游戏封面           |
+| `SKIP_NON_STEAM`   | `false` | 跳过 Steam 商店中已下架的游戏             |
 | `USE_ONLY_LIBRARY` | `false` | 仅从游戏库获取信息，不使用 Steam 商店 API |
-| `SKIP_FREE_STEAM` | `false` | 跳过免费游戏（免费游玩） |
-| `STEAM_CACHE` | `true` | 是否使用缓存的游戏信息 |
-| `ALLOW_DUPLICATES` | `false` | 允许重复导入（默认会跳过已存在的游戏） |
-| `TEST_LIMIT` | - | 测试模式：限制导入的游戏数量（可选） |
-| `DEBUG` | `false` | 调试模式：开启后异常时会抛出完整堆栈信息 |
+| `SKIP_FREE_STEAM`  | `false` | 跳过免费游戏（免费游玩）                  |
+| `STEAM_CACHE`      | `true`  | 是否使用缓存的游戏信息                    |
+| `ALLOW_DUPLICATES` | `false` | 允许重复导入（默认会跳过已存在的游戏）    |
+| `TEST_LIMIT`       | -       | 测试模式：限制导入的游戏数量（可选）      |
+| `DEBUG`            | `false` | 调试模式：开启后异常时会抛出完整堆栈信息  |
 
 ### 布尔值配置
 
@@ -295,7 +297,7 @@ SKIP_FREE_STEAM=true
 **缺点：**
 
 - ⚠️ 速度较慢
-- ⚠️ 受速率限制（每5分钟200个游戏）
+- ⚠️ 受速率限制（每 5 分钟 200 个游戏）
 - ⚠️ 已下架游戏可能无法获取
 
 ### 模式 2：仅从游戏库获取（`USE_ONLY_LIBRARY=true`）
@@ -332,7 +334,7 @@ A: 从 Notion 页面 URL 中获取。URL 格式为：
 https://www.notion.so/Your-Page-Title-xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-其中 `xxxxxxxxxxxxxxxxxxxxxxxx` 就是页面 ID（32个字符，去掉连字符）。
+其中 `xxxxxxxxxxxxxxxxxxxxxxxx` 就是页面 ID（32 个字符，去掉连字符）。
 
 ### Q: 如何获取数据库 ID？
 
@@ -359,7 +361,7 @@ A: 默认情况下，程序会自动跳过已存在的游戏（按游戏名称�
 
 ### Q: Steam 商店 API 速率限制？
 
-A: Steam 商店 API 限制为每5分钟200个游戏。如果游戏库很大：
+A: Steam 商店 API 限制为每 5 分钟 200 个游戏。如果游戏库很大：
 
 - 使用 `USE_ONLY_LIBRARY=true` 跳过商店 API
 
@@ -367,7 +369,11 @@ A: Steam 商店 API 限制为每5分钟200个游戏。如果游戏库很大：
 
 本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
 
+**版权信息：**
+
+- 原始项目：Copyright (c) 2020 solesensei
+- 当前版本：Copyright (c) 2025 kaliluying
+
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
-

@@ -2,6 +2,7 @@
 Steam游戏库处理模块
 用于从Steam API和Steam商店获取游戏信息
 """
+
 import re
 import typing as tp
 
@@ -28,6 +29,7 @@ class SteamStoreApi:
     Steam商店API客户端
     用于从Steam商店获取游戏详细信息
     """
+
     # Steam商店API端点
     API_HOST = "https://store.steampowered.com/api/appdetails?appids={}"
 
@@ -50,13 +52,13 @@ class SteamStoreApi:
     def get_game_info(self, game_id: TGameID) -> tp.Optional[SteamStoreApp]:
         """
         获取Steam商店中的游戏信息
-        
+
         Args:
             game_id: 游戏ID
-            
+
         Returns:
             SteamStoreApp对象或None（如果获取失败）
-            
+
         Raises:
             SteamApiNotFoundError: 游戏未找到
             SteamStoreApiError: API请求错误
@@ -93,6 +95,7 @@ class SteamGamesLibrary(GamesLibrary):
     Steam游戏库管理类
     继承自GamesLibrary，实现Steam平台特定的游戏库操作
     """
+
     # Steam图片资源主机地址
     IMAGE_HOST = "http://media.steampowered.com/steamcommunity/public/images/apps/"
     # 游戏信息缓存文件名
@@ -101,7 +104,7 @@ class SteamGamesLibrary(GamesLibrary):
     def __init__(self, api_key: TSteamApiKey, user_id: TSteamUserID):
         """
         初始化Steam游戏库
-        
+
         Args:
             api_key: Steam API密钥
             user_id: Steam用户ID
@@ -115,13 +118,13 @@ class SteamGamesLibrary(GamesLibrary):
     def _get_api(self, api_key: TSteamApiKey):
         """
         获取Steam API连接对象
-        
+
         Args:
             api_key: Steam API密钥
-            
+
         Returns:
             APIConnection对象
-            
+
         Raises:
             SteamApiError: API连接失败
         """
@@ -133,13 +136,13 @@ class SteamGamesLibrary(GamesLibrary):
     def _get_user(self, user_id: TSteamUserID):
         """
         获取Steam用户对象
-        
+
         Args:
             user_id: Steam用户ID（可以是整数ID或字符串URL）
-            
+
         Returns:
             SteamUser对象
-            
+
         Raises:
             SteamApiError: 用户未找到或其他错误
         """
@@ -164,11 +167,11 @@ class SteamGamesLibrary(GamesLibrary):
         """
         登录Steam（类方法）
         如果未提供凭证，会提示用户输入
-        
+
         Args:
             api_key: Steam API密钥（可选）
             user_id: Steam用户ID（可选）
-            
+
         Returns:
             SteamGamesLibrary实例
         """
@@ -181,7 +184,9 @@ class SteamGamesLibrary(GamesLibrary):
             api_key = input(color.c("Token: ")).strip()
         if user_id is None:
             echo.y("请输入Steam用户个人资料ID。")
-            user_id = input(color.c("User: http://steamcommunity.com/profiles/")).strip()
+            user_id = input(
+                color.c("User: http://steamcommunity.com/profiles/")
+            ).strip()
             # 移除URL前缀，只保留用户ID
             user_id = re.sub(r"^https?:\/\/steamcommunity\.com\/id\/", "", user_id)
         return cls(api_key=api_key, user_id=user_id)
@@ -189,11 +194,11 @@ class SteamGamesLibrary(GamesLibrary):
     def _image_link(self, game_id: TGameID, img_hash: str):
         """
         生成Steam游戏图片链接
-        
+
         Args:
             game_id: 游戏ID
             img_hash: 图片哈希值
-            
+
         Returns:
             str: 完整的图片URL
         """
@@ -203,10 +208,10 @@ class SteamGamesLibrary(GamesLibrary):
         """
         获取游戏背景图片URL
         尝试多种可能的背景图片路径
-        
+
         Args:
             game_id: 游戏ID
-            
+
         Returns:
             str: 背景图片URL，如果不存在则返回None
         """
@@ -225,10 +230,10 @@ class SteamGamesLibrary(GamesLibrary):
     def _playtime_format(playtime_in_minutes: int) -> str:
         """
         格式化游戏时长
-        
+
         Args:
             playtime_in_minutes: 游戏时长（分钟）
-            
+
         Returns:
             str: 格式化后的游戏时长字符串
         """
@@ -241,7 +246,7 @@ class SteamGamesLibrary(GamesLibrary):
     def _cache_game(self, game_info: GameInfo):
         """
         将游戏信息缓存到文件
-        
+
         Args:
             game_info: 游戏信息对象
         """
@@ -252,7 +257,7 @@ class SteamGamesLibrary(GamesLibrary):
     def _load_cached_games(self, skip_free_games: bool = False):
         """
         从缓存文件加载游戏信息
-        
+
         Args:
             skip_free_games: 是否跳过免费游戏
         """
@@ -274,7 +279,7 @@ class SteamGamesLibrary(GamesLibrary):
     ):
         """
         从Steam游戏库获取游戏信息
-        
+
         Args:
             skip_non_steam: 是否跳过Steam商店中已下架的游戏
             skip_free_games: 是否跳过免费游戏
@@ -282,7 +287,7 @@ class SteamGamesLibrary(GamesLibrary):
             cache: 是否使用缓存
             force: 是否强制重新获取
             limit: 限制获取的游戏数量（用于测试，None表示不限制）
-            
+
         Raises:
             SteamApiError: API请求错误
         """
@@ -303,16 +308,18 @@ class SteamGamesLibrary(GamesLibrary):
                 initial_count = len(self._games)
                 # 如果设置了限制且缓存中的游戏已经达到或超过限制，直接返回
                 if limit is not None and limit > 0 and initial_count >= limit:
-                    echo.y(f"\n测试模式：缓存中已有 {initial_count} 个游戏（限制：{limit}），跳过获取")
+                    echo.y(
+                        f"\n测试模式：缓存中已有 {initial_count} 个游戏（限制：{limit}），跳过获取"
+                    )
                     return
-                
+
                 # 遍历用户游戏库中的游戏
                 for i, g in enumerate(sorted(games_iter, key=lambda x: x.name)):
                     # 如果设置了限制且已达到限制，停止获取
                     if limit is not None and limit > 0 and len(self._games) >= limit:
                         echo.y(f"\n测试模式：已获取 {limit} 个游戏，停止获取")
                         break
-                    
+
                     game_id = str(g.id)
                     # 如果游戏已在缓存中，跳过
                     if game_id in self._games:
@@ -396,10 +403,10 @@ class SteamGamesLibrary(GamesLibrary):
     def get_games_list(self, **kwargs) -> tp.List[TGameID]:
         """
         获取游戏ID列表
-        
+
         Args:
             **kwargs: 传递给_fetch_library_games的参数
-            
+
         Returns:
             List[TGameID]: 游戏ID列表
         """
@@ -409,14 +416,14 @@ class SteamGamesLibrary(GamesLibrary):
     def get_game_info(self, game_id: TGameID, **kwargs) -> GameInfo:
         """
         根据游戏ID获取游戏信息
-        
+
         Args:
             game_id: 游戏ID
             **kwargs: 传递给_fetch_library_games的参数
-            
+
         Returns:
             GameInfo: 游戏信息对象
-            
+
         Raises:
             SteamApiError: 游戏未找到
         """

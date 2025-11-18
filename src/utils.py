@@ -2,6 +2,7 @@
 工具函数模块
 提供颜色输出、文件操作、重试装饰器等实用功能
 """
+
 import json
 import os
 import sys
@@ -13,7 +14,8 @@ from termcolor import colored
 # Windows平台需要初始化colorama以支持颜色输出
 if sys.platform == "win32":
     import colorama
-    os.system('color')
+
+    os.system("color")
     colorama.init()
 
 
@@ -106,7 +108,7 @@ def soft_exit(exit_code):
     """
     软退出函数
     在Windows平台上会等待用户按键后再退出
-    
+
     Args:
         exit_code: 退出代码
     """
@@ -118,36 +120,45 @@ def soft_exit(exit_code):
 def load_from_file(filename):
     """
     从JSON文件加载数据
-    
+
     Args:
         filename: 文件名
-        
+
     Returns:
         dict: 从文件加载的字典，如果文件不存在则返回空字典
     """
     if not os.path.exists(filename):
         return {}
-    with open(filename, 'r') as f:
+    with open(filename, "r") as f:
         return json.load(f)
 
 
 def dump_to_file(d, filename):
     """
     将数据保存到JSON文件
-    
+
     Args:
         d: 要保存的字典
         filename: 文件名
     """
-    with open(filename, 'w') as f:
+    with open(filename, "w") as f:
         json.dump(d, f)
 
 
-def retry(exceptions, on_code=None, retry_num=3, initial_wait=0.5, backoff=2, raise_on_error=True, debug_msg=None, debug=False):
+def retry(
+    exceptions,
+    on_code=None,
+    retry_num=3,
+    initial_wait=0.5,
+    backoff=2,
+    raise_on_error=True,
+    debug_msg=None,
+    debug=False,
+):
     """
     重试装饰器
     当函数抛出指定异常时自动重试
-    
+
     Args:
         exceptions: 要捕获的异常类型（可以是元组）
         on_code: 仅在特定错误代码时重试（可选）
@@ -157,10 +168,11 @@ def retry(exceptions, on_code=None, retry_num=3, initial_wait=0.5, backoff=2, ra
         raise_on_error: 重试失败后是否抛出异常
         debug_msg: 调试消息（可选）
         debug: 是否显示调试信息
-        
+
     Returns:
         装饰器函数
     """
+
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
@@ -185,10 +197,14 @@ def retry(exceptions, on_code=None, retry_num=3, initial_wait=0.5, backoff=2, ra
                     if debug:
                         # 显示调试信息
                         print_args = args if args else ""
-                        msg = str(
-                            f"函数: {f.__name__} 参数: {print_args}, kwargs: {kwargs}\n"
-                            f"异常: {e}\n"
-                        ) if debug_msg is None else color.m(debug_msg)
+                        msg = (
+                            str(
+                                f"函数: {f.__name__} 参数: {print_args}, kwargs: {kwargs}\n"
+                                f"异常: {e}\n"
+                            )
+                            if debug_msg is None
+                            else color.m(debug_msg)
+                        )
                         echo.m("\n" + msg)
                         # 倒计时显示
                         for s in range(_delay, 1, -1):
@@ -196,5 +212,7 @@ def retry(exceptions, on_code=None, retry_num=3, initial_wait=0.5, backoff=2, ra
                             time.sleep(1)
                     else:
                         time.sleep(_delay)
+
         return wrapper
+
     return decorator
