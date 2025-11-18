@@ -57,7 +57,7 @@ STORE_BG_COVER=false
 SKIP_NON_STEAM=false
 USE_ONLY_LIBRARY=false
 SKIP_FREE_STEAM=false
-STEAM_NO_CACHE=false
+STEAM_CACHE=true
 ALLOW_DUPLICATES=false
 
 # 调试模式
@@ -69,9 +69,18 @@ DEBUG=false
 #### Notion Integration Token
 
 1. 访问 [Notion Integrations](https://www.notion.so/my-integrations)
+
 2. 创建新的 Integration
+
 3. 复制 Integration Token 到 `NOTION_TOKEN`
+
 4. 获取父页面 ID（从 Notion 页面 URL 中获取）到 `NOTION_PAGE_ID`
+
+   ![image-20251118170958903](https://gmlblog.oss-cn-hangzhou.aliyuncs.com/img/image-20251118170958903.png)
+
+5.  (可选) 获取数据库ID（从 Notion 页面 URL 中获取）到`NOTION_DATABASE_ID`
+
+   ![image-20251118171356096](https://gmlblog.oss-cn-hangzhou.aliyuncs.com/img/image-20251118171356096.png)
 
 #### Steam API Key
 
@@ -90,6 +99,106 @@ DEBUG=false
 ```bash
 python main.py
 ```
+
+## 📖 使用说明
+
+### 运行流程
+
+运行程序后，程序会按以下步骤执行：
+
+1. **验证配置**：检查 `.env` 文件中的必需配置项
+2. **登录 Notion**：使用 Integration Token 连接到 Notion
+3. **登录 Steam**：使用 API Key 连接到 Steam
+4. **获取游戏列表**：从 Steam 游戏库获取游戏信息
+5. **创建/连接数据库**：在 Notion 中创建新数据库或连接到已有数据库
+6. **导入游戏**：将游戏信息导入到 Notion 数据库
+
+### 运行输出示例
+
+![image-20251118171155124](https://gmlblog.oss-cn-hangzhou.aliyuncs.com/img/image-20251118171155124.png)
+
+### 查看导入结果
+
+1. **打开 Notion 页面**：访问你配置的 Notion 页面
+2. **查看数据库**：如果创建了新数据库，会在页面中看到游戏数据库
+3. **查看游戏信息**：每个游戏包含以下信息：
+   - 游戏名称
+   - 游戏封面图片
+   - 发行日期
+   - 游戏时长（小时）
+   - 游戏状态（可在 Notion 中手动修改）
+   - 平台标签（默认标记为 Steam）
+
+### 使用技巧
+
+#### 1. 追加新游戏
+
+当 Steam 库中有新游戏时，再次运行程序：
+
+```env
+# 自动跳过已存在的游戏
+ALLOW_DUPLICATES=false
+
+# 使用缓存，只获取新游戏信息
+STEAM_CACHE=true
+```
+
+#### 2. 更新已有游戏信息
+
+如果需要更新已有游戏的信息（如封面、日期等）：
+
+```env
+# 不使用缓存，强制重新获取
+STEAM_CACHE=false
+```
+
+#### 3. 测试模式
+
+在正式导入前，可以先测试导入少量游戏：
+
+```env
+# 只导入前 10 个游戏进行测试
+TEST_LIMIT=10
+```
+
+#### 4. 自定义游戏状态
+
+导入后，可以在 Notion 中手动修改游戏状态：
+- 通关
+- 游玩中
+- 计划中
+- 吃灰
+- 弃坑
+
+### 缓存机制说明
+
+程序会在项目目录下创建 `game_info_cache.json` 文件来缓存游戏信息：
+
+- **启用缓存**（`STEAM_CACHE=true`，默认）：
+  - 首次运行：获取所有游戏信息并保存到缓存
+  - 后续运行：只获取新游戏信息，已缓存的游戏直接使用缓存
+  - 优点：大幅加快重复导入速度
+
+- **禁用缓存**（`STEAM_CACHE=false`）：
+  - 每次运行都重新获取所有游戏信息
+  - 优点：确保信息最新
+  - 缺点：速度较慢，可能触发 API 速率限制
+
+### 错误处理
+
+程序运行过程中如果遇到错误：
+
+1. **配置错误**：检查 `.env` 文件中的配置是否正确
+2. **API 错误**：检查 Token 和 API Key 是否有效
+3. **网络错误**：检查网络连接，程序会自动重试
+4. **调试模式**：开启 `DEBUG=true` 查看详细错误信息
+
+### 输出文件
+
+程序运行后会在项目目录生成：
+
+- `game_info_cache.json`：游戏信息缓存文件（如果启用缓存）
+- 控制台输出：显示导入进度和结果
 
 ## ⚙️ 配置选项说明
 
@@ -118,7 +227,7 @@ python main.py
 | `SKIP_NON_STEAM` | `false` | 跳过 Steam 商店中已下架的游戏 |
 | `USE_ONLY_LIBRARY` | `false` | 仅从游戏库获取信息，不使用 Steam 商店 API |
 | `SKIP_FREE_STEAM` | `false` | 跳过免费游戏（免费游玩） |
-| `STEAM_NO_CACHE` | `false` | 不使用缓存的游戏信息 |
+| `STEAM_CACHE` | `true` | 是否使用缓存的游戏信息 |
 | `ALLOW_DUPLICATES` | `false` | 允许重复导入（默认会跳过已存在的游戏） |
 | `TEST_LIMIT` | - | 测试模式：限制导入的游戏数量（可选） |
 | `DEBUG` | `false` | 调试模式：开启后异常时会抛出完整堆栈信息 |
@@ -262,7 +371,3 @@ A: Steam 商店 API 限制为每5分钟200个游戏。如果游戏库很大：
 
 欢迎提交 Issue 和 Pull Request！
 
-## 📚 相关文档
-
-- [Notion API 指南](NOTION_API_GUIDE.md)
-- [迁移指南](MIGRATION_GUIDE.md)

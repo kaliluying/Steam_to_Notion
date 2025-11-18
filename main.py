@@ -9,13 +9,20 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from ngl.client_v2 import NotionGameListV2 as NotionGameList
-from ngl.errors import ServiceError
-from ngl.games.steam import SteamGamesLibrary
-from ngl.utils import echo, color, soft_exit
+from src.client_v2 import NotionGameListV2 as NotionGameList
+from src.errors import ServiceError
+from src.games.steam import SteamGamesLibrary
+from src.utils import echo, color, soft_exit
 
 # 加载 .env 文件
-env_path = Path(__file__).parent / '.env'
+# 支持打包成exe后的路径：优先使用exe所在目录，否则使用脚本所在目录
+if getattr(sys, 'frozen', False):
+    # 打包成exe后的情况
+    base_path = Path(sys.executable).parent
+else:
+    # 正常Python脚本运行
+    base_path = Path(__file__).parent
+env_path = base_path / '.env'
 load_dotenv(env_path)
 
 # ----------- 从 .env 文件读取配置 -----------
@@ -45,7 +52,7 @@ STORE_BG_COVER = os.getenv("STORE_BG_COVER", "false").lower() in ("true", "1", "
 SKIP_NON_STEAM = os.getenv("SKIP_NON_STEAM", "false").lower() in ("true", "1", "yes", "on")
 USE_ONLY_LIBRARY = os.getenv("USE_ONLY_LIBRARY", "false").lower() in ("true", "1", "yes", "on")
 SKIP_FREE_STEAM = os.getenv("SKIP_FREE_STEAM", "false").lower() in ("true", "1", "yes", "on")
-STEAM_NO_CACHE = os.getenv("STEAM_NO_CACHE", "false").lower() in ("true", "1", "yes", "on")
+STEAM_CACHE = os.getenv("STEAM_CACHE", "true").lower() in ("true", "1", "yes", "on")
 ALLOW_DUPLICATES = os.getenv("ALLOW_DUPLICATES", "false").lower() in ("true", "1", "yes", "on")
 
 # 测试限制（可选）
@@ -90,13 +97,16 @@ try:
 
     # 获取Steam游戏库列表
     echo.y("正在获取Steam游戏库...")
+    if TEST_LIMIT and TEST_LIMIT > 0:
+        echo.y(f"测试模式：限制获取 {TEST_LIMIT} 个游戏")
     game_list = sorted(
         [
             steam.get_game_info(id_) for id_ in steam.get_games_list(
                 skip_non_steam=SKIP_NON_STEAM,
                 skip_free_games=SKIP_FREE_STEAM,
                 library_only=USE_ONLY_LIBRARY,
-                no_cache=STEAM_NO_CACHE,
+                cache=STEAM_CACHE,
+                limit=TEST_LIMIT,  # 在获取时就限制数量
             )
         ], key=lambda x: x.playtime_minutes or 0, reverse=True  # 按游戏时长从高到低排序
     )
@@ -117,7 +127,7 @@ try:
         game_page = ngl.create_game_page()
         echo.g("创建成功！")
     
-    # 测试模式：限制导入数量
+    # 测试模式：双重保险，确保不超过限制（如果获取时没有完全限制）
     if TEST_LIMIT and TEST_LIMIT > 0 and len(game_list) > TEST_LIMIT:
         echo.y(f"测试模式：只导入前 {TEST_LIMIT} 个游戏（共 {len(game_list)} 个）")
         game_list = game_list[:TEST_LIMIT]

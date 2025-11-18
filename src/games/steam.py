@@ -7,11 +7,11 @@ import typing as tp
 
 import requests
 
-from ngl.api.steam import steamapi
-from ngl.core import is_valid_link
-from ngl.errors import SteamApiError, SteamApiNotFoundError, SteamStoreApiError
-from ngl.models.steam import SteamStoreApp
-from ngl.utils import color, echo, retry, dump_to_file, load_from_file
+from src.api.steam import steamapi
+from src.core import is_valid_link
+from src.errors import SteamApiError, SteamApiNotFoundError, SteamStoreApiError
+from src.models.steam import SteamStoreApp
+from src.utils import color, echo, retry, dump_to_file, load_from_file
 
 from .base import GameInfo, GamesLibrary, TGameID
 
@@ -268,8 +268,9 @@ class SteamGamesLibrary(GamesLibrary):
         skip_non_steam: bool = False,
         skip_free_games: bool = False,
         library_only: bool = False,
-        no_cache: bool = False,
+        cache: bool = True,
         force: bool = False,
+        limit: tp.Optional[int] = None,
     ):
         """
         从Steam游戏库获取游戏信息
@@ -278,15 +279,16 @@ class SteamGamesLibrary(GamesLibrary):
             skip_non_steam: 是否跳过Steam商店中已下架的游戏
             skip_free_games: 是否跳过免费游戏
             library_only: 是否仅从游戏库获取信息（不使用商店API）
-            no_cache: 是否不使用缓存
+            cache: 是否使用缓存
             force: 是否强制重新获取
+            limit: 限制获取的游戏数量（用于测试，None表示不限制）
             
         Raises:
             SteamApiError: API请求错误
         """
         if force or not self._games:
             # 从缓存加载游戏信息
-            if not no_cache:
+            if cache:
                 self._load_cached_games(skip_free_games=skip_free_games)
             try:
                 # INSERT_YOUR_CODE
@@ -297,8 +299,20 @@ class SteamGamesLibrary(GamesLibrary):
                     games_iter = self.user.games
 
                 number_of_games = len(games_iter)
+                # 计算已获取的游戏数量（包括缓存中的）
+                initial_count = len(self._games)
+                # 如果设置了限制且缓存中的游戏已经达到或超过限制，直接返回
+                if limit is not None and limit > 0 and initial_count >= limit:
+                    echo.y(f"\n测试模式：缓存中已有 {initial_count} 个游戏（限制：{limit}），跳过获取")
+                    return
+                
                 # 遍历用户游戏库中的游戏
                 for i, g in enumerate(sorted(games_iter, key=lambda x: x.name)):
+                    # 如果设置了限制且已达到限制，停止获取
+                    if limit is not None and limit > 0 and len(self._games) >= limit:
+                        echo.y(f"\n测试模式：已获取 {limit} 个游戏，停止获取")
+                        break
+                    
                     game_id = str(g.id)
                     # 如果游戏已在缓存中，跳过
                     if game_id in self._games:
@@ -372,6 +386,10 @@ class SteamGamesLibrary(GamesLibrary):
                     if skip_free_games and game_info.free:
                         continue
                     self._games[game_id] = game_info
+                    # 检查是否达到限制（每次添加后检查）
+                    if limit is not None and limit > 0 and len(self._games) >= limit:
+                        echo.y(f"\n测试模式：已获取 {limit} 个游戏，停止获取")
+                        break
             except Exception as e:
                 raise SteamApiError(error=e)
 

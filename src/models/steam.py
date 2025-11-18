@@ -4,7 +4,7 @@ Steam数据模型
 """
 import typing as tp
 
-from ngl.models.base import BaseModel
+from src.models.base import BaseModel
 
 
 class SteamStoreAppPriceOverview(BaseModel):

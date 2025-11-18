@@ -10,8 +10,8 @@ import os
 
 import requests
 
-from ngl.errors import ServiceError, NotionApiError
-from ngl.games.base import GameInfo
+from src.errors import ServiceError, NotionApiError
+from src.games.base import GameInfo
 
 from .utils import echo, color
 
