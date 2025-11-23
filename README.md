@@ -52,8 +52,7 @@ TEST_LIMIT=10  # 测试模式：限制导入数量
 - **Notion Token**: 访问 [Notion Integrations](https://www.notion.so/my-integrations) 创建 Integration
 - **Notion Page/Database ID**: 从页面 URL 中获取（32 位字符，去掉连字符）
 
-![image-20251118170958903](https://gmlblog.oss-cn-hangzhou.aliyuncs.com/img/
-image-20251118170958903.png)
+![image-20251118170958903](https://gmlblog.oss-cn-hangzhou.aliyuncs.com/img/image-20251118170958903.png)
 
 - **Steam API Key**: 访问 [Steam API Key](https://steamcommunity.com/dev/apikey) 获取
 - **Steam User ID**: 数字 ID 或用户名（支持完整 URL，会自动处理）
@@ -64,8 +63,7 @@ image-20251118170958903.png)
 python main.py
 ```
 
-![image-20251118171155124](https://gmlblog.oss-cn-hangzhou.aliyuncs.com/img/
-image-20251118171155124.png)
+![image-20251118171155124](https://gmlblog.oss-cn-hangzhou.aliyuncs.com/img/image-20251118171155124.png)
 
 ## ⚙️ 配置选项
 
