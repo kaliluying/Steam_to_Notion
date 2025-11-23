@@ -9,7 +9,6 @@ MIT License
 """
 
 import os
-import re
 import sys
 from pathlib import Path
 
@@ -37,21 +36,9 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_PAGE_ID = os.getenv("NOTION_PAGE_ID")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")  # 可选：已有数据库ID
 
-# Steam 配置
+# Steam 配置（用于验证，实际使用时会从环境变量读取）
 STEAM_TOKEN = os.getenv("STEAM_TOKEN")
-STEAM_USER_STR = os.getenv("STEAM_USER")
-# Steam用户ID可能是数字ID或自定义URL，需要转换
-if STEAM_USER_STR:
-    # 如果是纯数字，转换为整数（Steam 64位ID）
-    if STEAM_USER_STR.strip().isdigit():
-        STEAM_USER = int(STEAM_USER_STR.strip())
-    else:
-        # 否则作为自定义URL处理（移除URL前缀）
-        STEAM_USER = STEAM_USER_STR.strip()
-        # 移除可能的URL前缀
-        STEAM_USER = re.sub(r"^https?:\/\/steamcommunity\.com\/id\/", "", STEAM_USER)
-else:
-    STEAM_USER = None
+STEAM_USER = os.getenv("STEAM_USER")  # login() 方法会自动处理转换
 
 # 导入选项（布尔值，从字符串转换）
 STORE_BG_COVER = os.getenv("STORE_BG_COVER", "false").lower() in (
@@ -79,7 +66,7 @@ SKIP_FREE_STEAM = os.getenv("SKIP_FREE_STEAM", "false").lower() in (
     "on",
 )
 STEAM_CACHE = os.getenv("STEAM_CACHE", "true").lower() in ("true", "1", "yes", "on")
-ALLOW_DUPLICATES = os.getenv("ALLOW_DUPLICATES", "false").lower() in (
+UPDATE_MODE = os.getenv("UPDATE_MODE", "false").lower() in (
     "true",
     "1",
     "yes",
@@ -122,12 +109,12 @@ try:
         raise ServiceError(
             msg="未配置 NOTION_PAGE_ID 或 NOTION_DATABASE_ID，请在 .env 文件中设置至少一个"
         )
-    ngl = NotionGameList.login(token=NOTION_TOKEN, parent_page_id=NOTION_PAGE_ID)
+    ngl = NotionGameList.login()
     echo.g("Notion登录成功！")
 
     # 登录Steam
     echo.y("正在登录Steam...")
-    steam = SteamGamesLibrary.login(api_key=STEAM_TOKEN, user_id=STEAM_USER)
+    steam = SteamGamesLibrary.login()
     echo.g("Steam登录成功！")
 
     # 获取Steam游戏库列表
@@ -172,11 +159,12 @@ try:
 
     # 将Steam游戏库导入到Notion
     echo.y("正在将Steam游戏库导入到Notion...")
-    # skip_duplicates: 默认跳过重复，除非在 .env 中设置 ALLOW_DUPLICATES=true
+    # skip_duplicates: 默认跳过重复，除非在 .env 中设置 UPDATE_MODE=true（更新模式）
     errors = ngl.import_game_list(
         game_list,
         None,
-        skip_duplicates=not ALLOW_DUPLICATES,
+        skip_duplicates=not UPDATE_MODE,  # 更新模式下不跳过
+        update_mode=UPDATE_MODE,  # 启用更新模式
         use_bg_as_cover=STORE_BG_COVER,
     )
     imported = len(game_list) - len(errors)

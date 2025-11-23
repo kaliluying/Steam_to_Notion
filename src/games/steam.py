@@ -3,6 +3,7 @@ Steam游戏库处理模块
 用于从Steam API和Steam商店获取游戏信息
 """
 
+import os
 import re
 import typing as tp
 
@@ -166,29 +167,48 @@ class SteamGamesLibrary(GamesLibrary):
     ):
         """
         登录Steam（类方法）
-        如果未提供凭证，会提示用户输入
+        如果未提供凭证，会从环境变量读取，如果环境变量也没有则提示用户输入
 
         Args:
-            api_key: Steam API密钥（可选）
-            user_id: Steam用户ID（可选）
+            api_key: Steam API密钥（可选），如果为None则从环境变量 STEAM_TOKEN 读取
+            user_id: Steam用户ID（可选），如果为None则从环境变量 STEAM_USER 读取
 
         Returns:
             SteamGamesLibrary实例
         """
-        # TODO: 从个人资料URL解析游戏库？
+        # 从环境变量读取 api_key
         if api_key is None:
-            echo(
-                color.y("从以下地址获取Steam令牌: ")
-                + "https://steamcommunity.com/dev/apikey"
-            )
-            api_key = input(color.c("Token: ")).strip()
+            api_key = os.getenv("STEAM_TOKEN")
+            if not api_key:
+                echo(
+                    color.y("从以下地址获取Steam令牌: ")
+                    + "https://steamcommunity.com/dev/apikey"
+                )
+                api_key = input(color.c("Token: ")).strip()
+
+        # 从环境变量读取 user_id
         if user_id is None:
-            echo.y("请输入Steam用户个人资料ID。")
-            user_id = input(
-                color.c("User: http://steamcommunity.com/profiles/")
-            ).strip()
-            # 移除URL前缀，只保留用户ID
-            user_id = re.sub(r"^https?:\/\/steamcommunity\.com\/id\/", "", user_id)
+            user_id_str = os.getenv("STEAM_USER")
+            if user_id_str:
+                # 处理环境变量中的 user_id（支持数字ID或自定义URL）
+                user_id_str = user_id_str.strip()
+                # 如果是纯数字，转换为整数（Steam 64位ID）
+                if user_id_str.isdigit():
+                    user_id = int(user_id_str)
+                else:
+                    # 否则作为自定义URL处理（移除URL前缀）
+                    user_id = re.sub(
+                        r"^https?:\/\/steamcommunity\.com\/id\/", "", user_id_str
+                    )
+            else:
+                # 如果环境变量也没有，提示用户输入
+                echo.y("请输入Steam用户个人资料ID。")
+                user_id = input(
+                    color.c("User: http://steamcommunity.com/profiles/")
+                ).strip()
+                # 移除URL前缀，只保留用户ID
+                user_id = re.sub(r"^https?:\/\/steamcommunity\.com\/id\/", "", user_id)
+
         return cls(api_key=api_key, user_id=user_id)
 
     def _image_link(self, game_id: TGameID, img_hash: str):

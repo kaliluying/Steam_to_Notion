@@ -6,9 +6,9 @@
 
 - 🎮 自动同步 Steam 游戏库
 - 📊 自动创建/更新 Notion 数据库
-- 🔄 智能去重，支持追加导入
+- 🔄 智能去重，支持追加导入和更新模式
 - 🖼️ 自动获取游戏封面、图标和背景图
-- 📅 支持多种日期格式解析
+- 📅 智能日期解析：使用 dateparser 支持 200+ 种语言的日期格式
 - ⏱️ 显示游戏游玩时长
 - ⚡ 缓存机制，加快重复导入速度
 
@@ -43,7 +43,7 @@ STEAM_USER=your_steam_user_id_here
 
 # 导入选项（可选）
 STEAM_CACHE=true
-ALLOW_DUPLICATES=false
+UPDATE_MODE=false  # 更新模式：更新已存在的游戏信息
 TEST_LIMIT=10  # 测试模式：限制导入数量
 ```
 
@@ -87,7 +87,7 @@ image-20251118171155124.png)
 | `USE_ONLY_LIBRARY` | `false` | 仅从游戏库获取信息（速度快，但信息较少） |
 | `SKIP_FREE_STEAM`  | `false` | 跳过免费游戏                             |
 | `STEAM_CACHE`      | `true`  | 使用缓存加快重复导入                     |
-| `ALLOW_DUPLICATES` | `false` | 允许重复导入                             |
+| `UPDATE_MODE`      | `false` | 更新模式：更新已存在的游戏信息（而非跳过） |
 | `TEST_LIMIT`       | -       | 测试模式：限制导入数量                   |
 | `DEBUG`            | `false` | 调试模式                                 |
 
@@ -122,7 +122,14 @@ NOTION_PAGE_ID=your_page_id
 
 ```env
 NOTION_DATABASE_ID=your_database_id
-ALLOW_DUPLICATES=false  # 自动跳过已存在的游戏
+# 默认自动跳过已存在的游戏
+```
+
+**更新已存在的游戏信息：**
+
+```env
+NOTION_DATABASE_ID=your_database_id
+UPDATE_MODE=true  # 更新已存在的游戏信息（封面、时长等）
 ```
 
 **快速导入（仅游戏库信息）：**
@@ -157,13 +164,13 @@ TEST_LIMIT=10  # 只导入前 10 个游戏
 A: 从页面 URL 中获取，格式：`https://www.notion.so/...-xxxxxxxxxxxxxxxxxxxxxxxx`（32 位字符，去掉连字符）
 
 **Q: 如何避免重复导入？**  
-A: 默认自动跳过已存在的游戏，设置 `ALLOW_DUPLICATES=true` 可强制重复导入
+A: 默认自动跳过已存在的游戏。如果需要更新已存在游戏的信息（如封面、时长等），设置 `UPDATE_MODE=true` 即可更新，而不会创建重复条目
 
 **Q: Steam 商店 API 速率限制？**  
 A: 每 5 分钟 200 个游戏，游戏库很大时使用 `USE_ONLY_LIBRARY=true` 跳过商店 API
 
 **Q: 日期格式解析失败？**  
-A: 支持多种格式（英语、俄语等），如仍有问题请提交 Issue
+A: 使用 `dateparser` 库自动识别和解析 200+ 种语言的日期格式（包括英语、俄语、中文、日语等）。如果仍有问题请提交 Issue
 
 ## 📝 许可证
 
@@ -178,7 +185,8 @@ A: 支持多种格式（英语、俄语等），如仍有问题请提交 Issue
 
 - 🔄 **迁移至官方 Notion API**：基于官方 Notion REST API (2025-09-03)
 - 📊 **支持更新现有数据库**：可直接连接到已有数据库并追加新游戏
-- 📅 **增强日期格式解析**：支持多种语言格式（英语、俄语等）
+- 🔄 **更新模式**：支持更新已存在游戏的信息（封面、时长等），而不会创建重复条目
+- 📅 **智能日期解析**：使用 dateparser 库自动识别和解析 200+ 种语言的日期格式（包括英语、俄语、中文、日语等）
 
 ## 🙏 致谢
 

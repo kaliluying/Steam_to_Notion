@@ -11,6 +11,9 @@ import os
 
 import requests
 
+
+import dateparser
+
 from src.errors import ServiceError, NotionApiError
 from src.games.base import GameInfo
 
@@ -333,6 +336,16 @@ class NotionGameListV2:
         Returns:
             Set[str]: 已有游戏名称的集合
         """
+        game_map = self.get_existing_game_map()
+        return set(game_map.keys())
+
+    def get_existing_game_map(self) -> tp.Dict[str, str]:
+        """
+        获取数据库中已有的游戏名称到页面ID的映射（用于更新模式）
+
+        Returns:
+            Dict[str, str]: 游戏名称到页面ID的映射
+        """
         if not self._database_id:
             raise NotionApiError(msg="数据库ID未设置，请先创建或连接数据库")
 
@@ -354,7 +367,7 @@ class NotionGameListV2:
         if not title_prop_name:
             raise NotionApiError(msg="数据库中未找到标题属性")
 
-        existing_names = set()
+        existing_map = {}
         next_cursor = None
 
         # 分页查询所有页面
@@ -375,29 +388,31 @@ class NotionGameListV2:
             response = self._make_request("POST", query_endpoint, json=query_payload)
             data = response.json()
 
-            # 提取游戏名称
+            # 提取游戏名称和页面ID
             for page in data.get("results", []):
+                page_id = page.get("id")
                 properties = page.get("properties", {})
                 title_prop = properties.get(title_prop_name, {})
                 title_array = title_prop.get("title", [])
-                if title_array:
+                if title_array and page_id:
                     game_name = (
                         title_array[0].get("text", {}).get("content", "").strip()
                     )
                     if game_name:
-                        existing_names.add(game_name)
+                        existing_map[game_name] = page_id
 
             # 检查是否有更多页面
             next_cursor = data.get("next_cursor")
             if not next_cursor:
                 break
 
-        return existing_names
+        return existing_map
 
     @staticmethod
     def _parse_date(game: GameInfo) -> tp.Optional[str]:
         """
         解析游戏发布日期字符串为日期字符串 (YYYY-MM-DD)
+        使用 dateparser 库支持多种语言和格式
 
         Args:
             game: 游戏信息对象
@@ -409,60 +424,32 @@ class NotionGameListV2:
         if not date_str:
             return None
 
-        # 俄语月份映射
-        russian_months = {
-            "янв.": "Jan",
-            "фев.": "Feb",
-            "мар.": "Mar",
-            "апр.": "Apr",
-            "май": "May",
-            "июн.": "Jun",
-            "июл.": "Jul",
-            "авг.": "Aug",
-            "сен.": "Sep",
-            "окт.": "Oct",
-            "ноя.": "Nov",
-            "дек.": "Dec",
-        }
+        try:
+            # dateparser 支持 200+ 种语言，自动识别语言和格式
+            parsed_date = dateparser.parse(
+                date_str,
+                languages=None,  # 自动检测语言（支持 200+ 种语言）
+                settings={
+                    "PREFER_DAY_OF_MONTH": "first",  # 如果只有年月，使用月初
+                    "PREFER_DATES_FROM": "past",  # 偏好过去的日期（适合游戏发布日期）
+                    "RELATIVE_BASE": datetime.now(),  # 相对日期的基准
+                },
+            )
 
-        # 清理日期字符串
-        cleaned_date = date_str.strip()
-
-        # 处理俄语格式：移除"г."后缀
-        if cleaned_date.endswith(" г."):
-            cleaned_date = cleaned_date[:-3].strip()
-
-        # 替换俄语月份为英语月份
-        for ru_month, en_month in russian_months.items():
-            if ru_month in cleaned_date:
-                cleaned_date = cleaned_date.replace(ru_month, en_month)
-                break
-
-        # 支持的日期格式列表（按常见程度排序）
-        check_date_formats = (
-            r"%d %b, %Y",  # "24 Feb, 2022"
-            r"%d. %b %Y",  # "16. Nov 2004"
-            r"%d.%b.%Y",  # "16.Nov.2004" (无空格)
-            r"%d. %b. %Y",  # "16. Nov. 2004"
-            r"%b %d, %Y",  # "Feb 24, 2022"
-            r"%b %d %Y",  # "Feb 24 2022"
-            r"%d %b %Y",  # "24 Feb 2022"
-            r"%b %Y",  # "Feb 2022"
-            r"%Y",  # "2022"
-        )
-
-        for fmt in check_date_formats:
-            try:
-                parsed_date = datetime.strptime(cleaned_date, fmt)
+            if parsed_date:
                 return parsed_date.strftime("%Y-%m-%d")
-            except ValueError:
-                pass
-
-        # 如果所有格式都解析失败，输出警告并返回None
-        echo.r(
-            f"\n游戏 '{game.name}:{game.id}' | 发布日期: '{date_str}' 不匹配任何格式 | 跳过"
-        )
-        return None
+            else:
+                # 解析失败，输出警告
+                echo.r(
+                    f"\n游戏 '{game.name}:{game.id}' | 发布日期: '{date_str}' 无法解析 | 跳过"
+                )
+                return None
+        except Exception as e:
+            # 解析出错，输出错误信息
+            echo.r(
+                f"\n游戏 '{game.name}:{game.id}' | 解析日期 '{date_str}' 时出错: {e} | 跳过"
+            )
+            return None
 
     def add_game(
         self,
@@ -615,11 +602,119 @@ class NotionGameListV2:
             echo.r(f"添加游戏 '{game.name}' 失败: {e}")
             return False
 
+    def update_game(
+        self,
+        game: GameInfo,
+        page_id: str,
+        use_bg_as_cover: bool = False,
+    ) -> bool:
+        """
+        更新Notion中已存在的游戏信息
+
+        Args:
+            game: 游戏信息对象
+            page_id: 要更新的页面ID
+            use_bg_as_cover: 是否使用背景图片作为封面
+
+        Returns:
+            bool: 是否更新成功
+        """
+        if not self._database_id:
+            raise NotionApiError(msg="数据库ID未设置，请先创建或连接数据库")
+
+        try:
+            # 获取数据库属性（使用缓存或重新获取）
+            if self._db_properties_cache is None:
+                db_response = self._make_request(
+                    "GET", f"/databases/{self._database_id}"
+                )
+                db_data = db_response.json()
+                self._db_properties_cache = db_data.get("properties", {})
+
+            db_properties = self._db_properties_cache
+
+            # 准备属性数据，使用实际的属性名称
+            properties = {}
+
+            # 添加平台属性（如果存在）
+            if "平台" in db_properties:
+                properties["平台"] = {
+                    "type": "multi_select",
+                    "multi_select": [{"name": platform} for platform in game.platforms],
+                }
+
+            # 添加游戏时长属性（如果存在）- 转换为小时
+            if "游戏时长(小时)" in db_properties:
+                playtime_hours = (
+                    round(game.playtime_minutes / 60, 2) if game.playtime_minutes else 0
+                )
+                properties["游戏时长(小时)"] = {
+                    "type": "number",
+                    "number": playtime_hours,
+                }
+
+            # 添加发布日期（如果存在）
+            if "发行日期" in db_properties:
+                release_date = self._parse_date(game)
+                if release_date:
+                    properties["发行日期"] = {
+                        "type": "date",
+                        "date": {"start": release_date},
+                    }
+
+            # 添加备注（如果存在）
+            if "备注" in db_properties and game.playtime:
+                properties["备注"] = {
+                    "type": "rich_text",
+                    "rich_text": [
+                        {
+                            "type": "text",
+                            "text": {"content": f"游戏时长(小时): {game.playtime}"},
+                        }
+                    ],
+                }
+
+            # 构建请求体
+            payload = {}
+
+            # 如果有属性需要更新，添加到payload
+            if properties:
+                payload["properties"] = properties
+
+            # 添加图标
+            icon_uri = game.icon_uri or game.logo_uri
+            if icon_uri:
+                payload["icon"] = {"type": "external", "external": {"url": icon_uri}}
+
+            # 添加封面
+            cover_img_uri = (
+                game.bg_uri or game.logo_uri if use_bg_as_cover else game.logo_uri
+            )
+            if cover_img_uri:
+                payload["cover"] = {
+                    "type": "external",
+                    "external": {"url": cover_img_uri},
+                }
+
+            # 如果没有需要更新的内容，直接返回成功
+            if not payload:
+                return True
+
+            # 更新页面
+            response = self._make_request("PATCH", f"/pages/{page_id}", json=payload)
+
+            return True
+
+        except Exception as e:
+            echo.r(f"更新游戏 '{game.name}' 失败: {e}")
+            return False
+
     def import_game_list(
         self,
         game_list: tp.List[GameInfo],
         game_page: tp.Any = None,
         skip_duplicates: bool = True,
+        update_mode: bool = False,
         **kwargs,
     ) -> tp.List[GameInfo]:
         """
@@ -628,7 +723,8 @@ class NotionGameListV2:
         Args:
             game_list: 游戏信息列表
             game_page: 兼容参数（新API中不需要）
-            skip_duplicates: 是否跳过已存在的游戏（默认True）
+            skip_duplicates: 是否跳过已存在的游戏（默认True，与update_mode互斥）
+            update_mode: 是否更新已存在的游戏（默认False，与skip_duplicates互斥）
             **kwargs: 其他参数（如use_bg_as_cover）
 
         Returns:
@@ -636,22 +732,36 @@ class NotionGameListV2:
         """
         errors = []
         skipped = []
+        updated = []
         total = len(game_list)
 
-        # 如果需要去重，先获取已有游戏名称
+        # 如果启用更新模式，skip_duplicates 应该为 False
+        if update_mode:
+            skip_duplicates = False
+
+        # 如果需要去重或更新模式，先获取已有游戏信息
         # 注意：新建的数据库肯定是空的，不需要检查
         existing_names = None
-        if skip_duplicates:
+        existing_map = None
+        if skip_duplicates or update_mode:
             # 如果是新建的数据库，跳过检查（肯定是空的）
             if self._is_new_database:
                 echo.y("新建数据库，跳过已有游戏检查")
                 existing_names = set()  # 空集合，表示没有已有游戏
+                existing_map = {}  # 空映射
             else:
-                # 对于已有数据库，尝试获取已有游戏名称
+                # 对于已有数据库，尝试获取已有游戏信息
                 echo.y("正在查询已有游戏...")
                 try:
-                    existing_names = self.get_existing_game_names()
-                    echo.g(f"数据库中已有 {len(existing_names)} 个游戏")
+                    if update_mode:
+                        # 更新模式需要获取页面ID映射
+                        existing_map = self.get_existing_game_map()
+                        existing_names = set(existing_map.keys())
+                        echo.g(f"数据库中已有 {len(existing_map)} 个游戏")
+                    else:
+                        # 普通模式只需要游戏名称集合
+                        existing_names = self.get_existing_game_names()
+                        echo.g(f"数据库中已有 {len(existing_names)} 个游戏")
                 except NotionApiError as e:
                     # 如果是因为找不到标题属性而失败，给出更明确的提示
                     if "标题属性" in str(e):
@@ -660,17 +770,39 @@ class NotionGameListV2:
                     else:
                         echo.r(f"查询已有游戏失败: {e}，将继续导入但可能产生重复")
                     skip_duplicates = False
+                    update_mode = False
                     existing_names = None
+                    existing_map = None
                 except Exception as e:
                     echo.r(f"查询已有游戏失败: {e}，将继续导入但可能产生重复")
                     skip_duplicates = False
+                    update_mode = False
                     existing_names = None
+                    existing_map = None
 
         imported_count = 0
         skipped_count = 0
+        updated_count = 0
 
         for i, game in enumerate(game_list, start=1):
-            # 检查是否已存在
+            # 更新模式：如果游戏已存在，更新它
+            if update_mode and existing_map and game.name in existing_map:
+                page_id = existing_map[game.name]
+                if self.update_game(game, page_id, **kwargs):
+                    updated_count += 1
+                    updated.append(game)
+                    echo.c(
+                        f"进度: {i}/{total} (已导入: {imported_count}, 已更新: {updated_count}, 已跳过: {skipped_count})",
+                        end="\r",
+                    )
+                else:
+                    errors.append(game)
+                # 添加延迟以避免速率限制
+                if i < total:
+                    time.sleep(0.3)
+                continue
+
+            # 检查是否已存在（跳过模式）
             if skip_duplicates and existing_names and game.name in existing_names:
                 skipped_count += 1
                 skipped.append(game)
@@ -680,6 +812,7 @@ class NotionGameListV2:
                 )
                 continue
 
+            # 添加新游戏
             if self.add_game(
                 game,
                 game_page,
@@ -689,7 +822,7 @@ class NotionGameListV2:
             ):
                 imported_count += 1
                 echo.c(
-                    f"进度: {i}/{total} (已导入: {imported_count}, 已跳过: {skipped_count})",
+                    f"进度: {i}/{total} (已导入: {imported_count}, 已更新: {updated_count}, 已跳过: {skipped_count})",
                     end="\r",
                 )
             else:
@@ -702,6 +835,8 @@ class NotionGameListV2:
         echo.m("")  # 换行
         if skipped_count > 0:
             echo.y(f"已跳过 {skipped_count} 个已存在的游戏")
+        if updated_count > 0:
+            echo.g(f"已更新 {updated_count} 个已存在的游戏")
 
         return errors
 

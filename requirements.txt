@@ -5,3 +5,6 @@ python-dotenv>=1.0.0
 # 终端输出和颜色支持
 termcolor>=1.1.0
 colorama>=0.4.3
+
+# 日期解析（支持多语言）
+dateparser>=1.2.0
