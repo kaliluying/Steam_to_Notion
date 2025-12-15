@@ -212,9 +212,9 @@ class SteamStoreAppMovie(BaseModel):
         id: int,
         name: str,
         thumbnail: str,
-        webm: tp.Dict[str, str],
-        mp4: tp.Dict[str, str],
-        highlight: bool,
+        webm: tp.Optional[tp.Dict[str, str]] = None,
+        mp4: tp.Optional[tp.Dict[str, str]] = None,
+        highlight: bool = False,
         **kwargs,
     ):
         """
@@ -232,8 +232,8 @@ class SteamStoreAppMovie(BaseModel):
         self.id = id
         self.name = name
         self.thumbnail = thumbnail
-        self.webm = webm
-        self.mp4 = mp4
+        self.webm = webm or {}
+        self.mp4 = mp4 or {}
         self.highlight = highlight
 
 

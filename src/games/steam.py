@@ -293,7 +293,6 @@ class SteamGamesLibrary(GamesLibrary):
         skip_non_steam: bool = False,
         skip_free_games: bool = False,
         library_only: bool = False,
-        cache: bool = True,
         force: bool = False,
         limit: tp.Optional[int] = None,
     ):
@@ -304,7 +303,6 @@ class SteamGamesLibrary(GamesLibrary):
             skip_non_steam: 是否跳过Steam商店中已下架的游戏
             skip_free_games: 是否跳过免费游戏
             library_only: 是否仅从游戏库获取信息（不使用商店API）
-            cache: 是否使用缓存
             force: 是否强制重新获取
             limit: 限制获取的游戏数量（用于测试，None表示不限制）
 
@@ -312,113 +310,110 @@ class SteamGamesLibrary(GamesLibrary):
             SteamApiError: API请求错误
         """
         if force or not self._games:
-            # 从缓存加载游戏信息
-            if cache:
-                self._load_cached_games(skip_free_games=skip_free_games)
-            try:
-                # INSERT_YOUR_CODE
-                # 跳过免费游戏时，使用self.user.owned_games，否则用self.user.games
-                if skip_free_games:
-                    games_iter = self.user.owned_games
-                else:
-                    games_iter = self.user.games
+            self._load_cached_games(skip_free_games=skip_free_games)
+        
+        @retry(
+            SteamApiError,
+            retry_num=3,
+            initial_wait=5,
+            backoff=2,
+            raise_on_error=True,
+            debug_msg="获取Steam游戏库时出错，正在重试...",
+            debug=True,
+        )
+        def _fetch_games():
+            self._load_cached_games(skip_free_games=skip_free_games)
+            
+            if skip_free_games:
+                games_iter = self.user.owned_games
+            else:
+                games_iter = self.user.games
 
-                number_of_games = len(games_iter)
-                # 计算已获取的游戏数量（包括缓存中的）
-                initial_count = len(self._games)
-                # 如果设置了限制且缓存中的游戏已经达到或超过限制，直接返回
-                if limit is not None and limit > 0 and initial_count >= limit:
-                    echo.y(
-                        f"\n测试模式：缓存中已有 {initial_count} 个游戏（限制：{limit}），跳过获取"
-                    )
-                    return
+            number_of_games = len(games_iter)
+            initial_count = len(self._games)
+            if limit is not None and limit > 0 and initial_count >= limit:
+                echo.y(
+                    f"\n测试模式：缓存中已有 {initial_count} 个游戏（限制：{limit}），跳过获取"
+                )
+                return
 
-                # 遍历用户游戏库中的游戏
-                for i, g in enumerate(sorted(games_iter, key=lambda x: x.name)):
-                    # 如果设置了限制且已达到限制，停止获取
-                    if limit is not None and limit > 0 and len(self._games) >= limit:
-                        echo.y(f"\n测试模式：已获取 {limit} 个游戏，停止获取")
-                        break
+            for i, g in enumerate(sorted(games_iter, key=lambda x: x.name)):
+                if limit is not None and limit > 0 and len(self._games) >= limit:
+                    echo.y(f"\n测试模式：已获取 {limit} 个游戏，停止获取")
+                    break
 
-                    game_id = str(g.id)
-                    # 如果游戏已在缓存中，跳过
-                    if game_id in self._games:
+                game_id = str(g.id)
+                if game_id in self._games:
+                    continue
+                echo.c(
+                    " " * 100 + f"\r正在获取 [{i}/{number_of_games}]: {g.name}",
+                    end="\r",
+                )
+                steam_game = None
+                if not library_only:
+                    try:
+                        steam_game = self.store.get_game_info(game_id)
+                    except SteamApiNotFoundError:
+                        pass
+
+                    if steam_game is None and skip_non_steam:
+                        echo.m(
+                            f"游戏 {g.name} id:{game_id} 在Steam商店中未找到，跳过"
+                        )
+                        self._store_skipped.append(game_id)
                         continue
-                    echo.c(
-                        " " * 100 + f"\r正在获取 [{i}/{number_of_games}]: {g.name}",
-                        end="\r",
-                    )
-                    steam_game = None
-                    if not library_only:
-                        # 从Steam商店获取游戏信息
-                        try:
-                            steam_game = self.store.get_game_info(game_id)
-                        except SteamApiNotFoundError:
-                            pass
 
-                        # 如果游戏不在商店中且设置了跳过选项
-                        if steam_game is None and skip_non_steam:
-                            echo.m(
-                                f"游戏 {g.name} id:{game_id} 在Steam商店中未找到，跳过"
-                            )
-                            self._store_skipped.append(game_id)
-                            continue
+                    if steam_game is None:
+                        echo.r(
+                            f"游戏 {g.name} id:{game_id} 在Steam商店中未找到，从游戏库获取详细信息"
+                        )
 
-                        # 如果游戏不在商店中
-                        if steam_game is None:
-                            echo.r(
-                                f"游戏 {g.name} id:{game_id} 在Steam商店中未找到，从游戏库获取详细信息"
-                            )
+                logo_uri = None
+                if steam_game is not None and steam_game.header_image:
+                    logo_uri = steam_game.header_image
+                elif getattr(g, "img_logo_url", None):
+                    logo_uri = self._image_link(game_id, g.img_logo_url)
 
-                    # 确定Logo URI
-                    logo_uri = None
-                    if steam_game is not None and steam_game.header_image:
-                        logo_uri = steam_game.header_image
-                    elif getattr(g, "img_logo_url", None):
-                        logo_uri = self._image_link(game_id, g.img_logo_url)
+                game_info = GameInfo(
+                    id=game_id,
+                    name=g.name,
+                    platforms=[PLATFORM],
+                    release_date=(
+                        steam_game.release_date.date
+                        if steam_game is not None
+                        else None
+                    ),
+                    playtime=(
+                        self._playtime_format(g.playtime_forever)
+                        if getattr(g, "playtime_forever", None) is not None
+                        else None
+                    ),
+                    playtime_minutes=(
+                        g.playtime_forever
+                        if getattr(g, "playtime_forever", None) is not None
+                        else None
+                    ),
+                    logo_uri=logo_uri,
+                    bg_uri=self._get_bg_image(game_id),
+                    icon_uri=(
+                        self._image_link(game_id, g.img_icon_url)
+                        if getattr(g, "img_icon_url", None) is not None
+                        else None
+                    ),
+                    free=steam_game.is_free if steam_game is not None else None,
+                )
+                self._cache_game(game_info)
+                if skip_free_games and game_info.free:
+                    continue
+                self._games[game_id] = game_info
+                if limit is not None and limit > 0 and len(self._games) >= limit:
+                    echo.y(f"\n测试模式：已获取 {limit} 个游戏，停止获取")
+                    break
 
-                    # 创建游戏信息对象
-                    game_info = GameInfo(
-                        id=game_id,
-                        name=g.name,
-                        platforms=[PLATFORM],
-                        release_date=(
-                            steam_game.release_date.date
-                            if steam_game is not None
-                            else None
-                        ),
-                        playtime=(
-                            self._playtime_format(g.playtime_forever)
-                            if getattr(g, "playtime_forever", None) is not None
-                            else None
-                        ),
-                        playtime_minutes=(
-                            g.playtime_forever
-                            if getattr(g, "playtime_forever", None) is not None
-                            else None
-                        ),
-                        logo_uri=logo_uri,
-                        bg_uri=self._get_bg_image(game_id),
-                        icon_uri=(
-                            self._image_link(game_id, g.img_icon_url)
-                            if getattr(g, "img_icon_url", None) is not None
-                            else None
-                        ),
-                        free=steam_game.is_free if steam_game is not None else None,
-                    )
-                    # 如果从商店获取到信息，则缓存
-                    if steam_game is not None:
-                        self._cache_game(game_info)
-                    # 如果设置了跳过免费游戏且游戏是免费的，则跳过
-                    if skip_free_games and game_info.free:
-                        continue
-                    self._games[game_id] = game_info
-                    # 检查是否达到限制（每次添加后检查）
-                    if limit is not None and limit > 0 and len(self._games) >= limit:
-                        echo.y(f"\n测试模式：已获取 {limit} 个游戏，停止获取")
-                        break
-            except Exception as e:
-                raise SteamApiError(error=e)
+        try:
+            _fetch_games()
+        except Exception as e:
+            raise SteamApiError(error=e)
 
     def get_games_list(self, **kwargs) -> tp.List[TGameID]:
         """

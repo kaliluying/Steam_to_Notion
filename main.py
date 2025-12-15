@@ -65,7 +65,6 @@ SKIP_FREE_STEAM = os.getenv("SKIP_FREE_STEAM", "false").lower() in (
     "yes",
     "on",
 )
-STEAM_CACHE = os.getenv("STEAM_CACHE", "true").lower() in ("true", "1", "yes", "on")
 UPDATE_MODE = os.getenv("UPDATE_MODE", "false").lower() in (
     "true",
     "1",
@@ -128,7 +127,6 @@ try:
                 skip_non_steam=SKIP_NON_STEAM,
                 skip_free_games=SKIP_FREE_STEAM,
                 library_only=USE_ONLY_LIBRARY,
-                cache=STEAM_CACHE,
                 limit=TEST_LIMIT,  # 在获取时就限制数量
             )
         ],
@@ -178,6 +176,12 @@ try:
         for error in sorted(errors, key=lambda x: x.name):
             echo.r(f"- {error.name}")
     echo.g(f"已导入: {imported}/{len(game_list)}\n")
+
+    # 导入成功后删除缓存
+    cache_file = steam.CACHE_GAME_FILE
+    if os.path.exists(cache_file):
+        os.remove(cache_file)
+        echo.g(f"已删除缓存文件: {cache_file}")
 
 except ServiceError as err:
     # 处理服务错误

@@ -42,7 +42,6 @@ STEAM_TOKEN=your_steam_token_here
 STEAM_USER=your_steam_user_id_here
 
 # 导入选项（可选）
-STEAM_CACHE=true
 UPDATE_MODE=false  # 更新模式：更新已存在的游戏信息
 TEST_LIMIT=10  # 测试模式：限制导入数量
 ```
@@ -84,7 +83,6 @@ python main.py
 | `SKIP_NON_STEAM`   | `false` | 跳过 Steam 商店中已下架的游戏            |
 | `USE_ONLY_LIBRARY` | `false` | 仅从游戏库获取信息（速度快，但信息较少） |
 | `SKIP_FREE_STEAM`  | `false` | 跳过免费游戏                             |
-| `STEAM_CACHE`      | `true`  | 使用缓存加快重复导入                     |
 | `UPDATE_MODE`      | `false` | 更新模式：更新已存在的游戏信息（而非跳过） |
 | `TEST_LIMIT`       | -       | 测试模式：限制导入数量                   |
 | `DEBUG`            | `false` | 调试模式                                 |
@@ -151,8 +149,8 @@ TEST_LIMIT=10  # 只导入前 10 个游戏
 
 ### 缓存机制
 
-- **启用缓存**（默认）：首次运行获取所有信息并缓存，后续运行只获取新游戏
-- **禁用缓存**：每次运行都重新获取，确保信息最新但速度较慢
+- 默认启用缓存：首次运行获取所有信息并缓存，后续运行只获取新游戏
+- 导入成功后自动删除缓存文件
 
 缓存文件：`game_info_cache.json`
 
