@@ -40,37 +40,18 @@ NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")  # 可选：已有数据库
 STEAM_TOKEN = os.getenv("STEAM_TOKEN")
 STEAM_USER = os.getenv("STEAM_USER")  # login() 方法会自动处理转换
 
+
+def parse_bool_env(value: str) -> bool:
+    """解析布尔类型环境变量"""
+    return value.lower() in ("true", "1", "yes", "on")
+
+
 # 导入选项（布尔值，从字符串转换）
-STORE_BG_COVER = os.getenv("STORE_BG_COVER", "false").lower() in (
-    "true",
-    "1",
-    "yes",
-    "on",
-)
-SKIP_NON_STEAM = os.getenv("SKIP_NON_STEAM", "false").lower() in (
-    "true",
-    "1",
-    "yes",
-    "on",
-)
-USE_ONLY_LIBRARY = os.getenv("USE_ONLY_LIBRARY", "false").lower() in (
-    "true",
-    "1",
-    "yes",
-    "on",
-)
-SKIP_FREE_STEAM = os.getenv("SKIP_FREE_STEAM", "false").lower() in (
-    "true",
-    "1",
-    "yes",
-    "on",
-)
-UPDATE_MODE = os.getenv("UPDATE_MODE", "false").lower() in (
-    "true",
-    "1",
-    "yes",
-    "on",
-)
+STORE_BG_COVER = parse_bool_env(os.getenv("STORE_BG_COVER", "false"))
+SKIP_NON_STEAM = parse_bool_env(os.getenv("SKIP_NON_STEAM", "false"))
+USE_ONLY_LIBRARY = parse_bool_env(os.getenv("USE_ONLY_LIBRARY", "false"))
+SKIP_FREE_STEAM = parse_bool_env(os.getenv("SKIP_FREE_STEAM", "false"))
+UPDATE_MODE = parse_bool_env(os.getenv("UPDATE_MODE", "false"))
 
 # 测试限制（可选）
 TEST_LIMIT = os.getenv("TEST_LIMIT")
@@ -83,7 +64,7 @@ else:
     TEST_LIMIT = None
 
 # 调试模式
-DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes", "on")
+DEBUG = parse_bool_env(os.getenv("DEBUG", "false"))
 # ---------------------------------
 
 try:
@@ -149,11 +130,6 @@ try:
         echo.y("正在创建Notion模板页面...")
         game_page = ngl.create_game_page()
         echo.g("创建成功！")
-
-    # 测试模式：双重保险，确保不超过限制（如果获取时没有完全限制）
-    if TEST_LIMIT and TEST_LIMIT > 0 and len(game_list) > TEST_LIMIT:
-        echo.y(f"测试模式：只导入前 {TEST_LIMIT} 个游戏（共 {len(game_list)} 个）")
-        game_list = game_list[:TEST_LIMIT]
 
     # 将Steam游戏库导入到Notion
     echo.y("正在将Steam游戏库导入到Notion...")

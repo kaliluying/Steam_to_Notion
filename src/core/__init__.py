@@ -17,6 +17,6 @@ def is_valid_link(url):
     """
     try:
         r = requests.get(url, timeout=3)
-    except requests.Timeout:
+        return r.ok
+    except (requests.Timeout, requests.ConnectionError, requests.RequestException):
         return False
-    return r.ok

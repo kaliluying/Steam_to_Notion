@@ -192,30 +192,15 @@ class NotionGameListV2:
 
             # 如果属性为空，尝试从 data_sources 获取（新版本格式）
             if not self._db_properties_cache and "data_sources" in database_data:
+                echo.y("从 data_sources 获取属性...")
+                self._db_properties_cache = self._fetch_properties_from_data_source(
+                    database_data.get("data_sources", [])
+                )
+            elif "data_sources" in database_data:
+                # 即使属性不为空，也保存 data_source_id（用于查询）
                 data_sources = database_data.get("data_sources", [])
                 if data_sources:
-                    # 获取第一个数据源的属性（初始数据源）
-                    echo.y("从 data_sources 获取属性...")
-                    data_source_id = data_sources[0].get("id")
-                    if data_source_id:
-                        self._data_source_id = data_source_id  # 保存数据源ID
-                        # 查询数据源以获取属性
-                        try:
-                            ds_response = self._make_request(
-                                "GET", f"/data_sources/{data_source_id}"
-                            )
-                            ds_data = ds_response.json()
-                            self._db_properties_cache = ds_data.get("properties", {})
-                        except Exception as e:
-                            echo.y(f"从 data_source 获取属性失败: {e}")
-            else:
-                # 即使属性不为空，也检查是否有 data_sources（用于查询）
-                if "data_sources" in database_data:
-                    data_sources = database_data.get("data_sources", [])
-                    if data_sources:
-                        data_source_id = data_sources[0].get("id")
-                        if data_source_id:
-                            self._data_source_id = data_source_id  # 保存数据源ID
+                    self._data_source_id = data_sources[0].get("id")
 
             echo.g(f"数据库创建成功: {self._database_id}")
 
@@ -232,9 +217,7 @@ class NotionGameListV2:
                 if "data_sources" in db_get_data:
                     data_sources = db_get_data.get("data_sources", [])
                     if data_sources:
-                        data_source_id = data_sources[0].get("id")
-                        if data_source_id:
-                            self._data_source_id = data_source_id  # 保存数据源ID
+                        self._data_source_id = data_sources[0].get("id")
 
             if self._db_properties_cache:
                 echo.c(f"数据库属性: {', '.join(self._db_properties_cache.keys())}")
@@ -249,6 +232,138 @@ class NotionGameListV2:
 
         except Exception as e:
             raise NotionApiError(msg=f"创建Notion数据库失败: {e}", error=e)
+
+    def _get_title_property_name(self, db_properties: dict) -> tp.Optional[str]:
+        """
+        从数据库属性中查找标题属性名称
+
+        Args:
+            db_properties: 数据库属性字典
+
+        Returns:
+            str: 标题属性名称，如果未找到则返回 None
+        """
+        for prop_name, prop_data in db_properties.items():
+            if prop_data.get("type") == "title":
+                return prop_name
+        return None
+
+    def _ensure_db_properties_cache(self) -> dict:
+        """
+        确保数据库属性缓存已加载
+
+        Returns:
+            dict: 数据库属性字典
+        """
+        if self._db_properties_cache is None:
+            db_response = self._make_request("GET", f"/databases/{self._database_id}")
+            self._db_properties_cache = db_response.json().get("properties", {})
+        return self._db_properties_cache
+
+    def _build_game_properties(
+        self, game: GameInfo, db_properties: dict, include_title: bool = False
+    ) -> dict:
+        """
+        构建游戏属性字典
+
+        Args:
+            game: 游戏信息对象
+            db_properties: 数据库属性字典
+            include_title: 是否包含标题属性
+
+        Returns:
+            dict: 游戏属性字典
+        """
+        properties = {}
+
+        if include_title:
+            title_prop_name = self._get_title_property_name(db_properties)
+            if title_prop_name:
+                properties[title_prop_name] = {
+                    "type": "title",
+                    "title": [{"type": "text", "text": {"content": game.name}}],
+                }
+
+        if "平台" in db_properties:
+            properties["平台"] = {
+                "type": "multi_select",
+                "multi_select": [{"name": platform} for platform in game.platforms],
+            }
+
+        if "游戏时长(小时)" in db_properties:
+            playtime_hours = (
+                round(game.playtime_minutes / 60, 2) if game.playtime_minutes else 0
+            )
+            properties["游戏时长(小时)"] = {"type": "number", "number": playtime_hours}
+
+        if "发行日期" in db_properties:
+            release_date = self._parse_date(game)
+            if release_date:
+                properties["发行日期"] = {
+                    "type": "date",
+                    "date": {"start": release_date},
+                }
+
+        if "备注" in db_properties and game.playtime:
+            properties["备注"] = {
+                "type": "rich_text",
+                "rich_text": [
+                    {
+                        "type": "text",
+                        "text": {"content": f"游戏时长(小时): {game.playtime}"},
+                    }
+                ],
+            }
+
+        return properties
+
+    def _build_cover_payload(self, game: GameInfo, use_bg_as_cover: bool) -> dict:
+        """
+        构建封面和图标的 payload
+
+        Args:
+            game: 游戏信息对象
+            use_bg_as_cover: 是否使用背景图作为封面
+
+        Returns:
+            dict: 包含 icon 和 cover 的 payload 字典
+        """
+        payload = {}
+
+        icon_uri = game.icon_uri or game.logo_uri
+        if icon_uri:
+            payload["icon"] = {"type": "external", "external": {"url": icon_uri}}
+
+        cover_img_uri = (
+            game.bg_uri or game.logo_uri if use_bg_as_cover else game.logo_uri
+        )
+        if cover_img_uri:
+            payload["cover"] = {"type": "external", "external": {"url": cover_img_uri}}
+
+        return payload
+
+    def _fetch_properties_from_data_source(self, data_sources: tp.List[dict]) -> dict:
+        """
+        从 data_sources 获取属性（新版 API）
+
+        Args:
+            data_sources: 数据源列表
+
+        Returns:
+            dict: 属性字典
+        """
+        if not data_sources:
+            return {}
+        data_source_id = data_sources[0].get("id")
+        if not data_source_id:
+            return {}
+        self._data_source_id = data_source_id
+        try:
+            ds_response = self._make_request("GET", f"/data_sources/{data_source_id}")
+            return ds_response.json().get("properties", {})
+        except Exception as e:
+            echo.y(f"从 data_source 获取属性失败: {e}")
+            return {}
 
     def connect_database(self, database_id: str):
         """
@@ -267,31 +382,17 @@ class NotionGameListV2:
 
         # 如果属性为空，尝试从 data_sources 获取（新版本格式 2025-09-03）
         if not self._db_properties_cache and "data_sources" in db_data:
+            echo.y("从 data_sources 获取属性...")
+            self._db_properties_cache = self._fetch_properties_from_data_source(
+                db_data.get("data_sources", [])
+            )
+            if self._db_properties_cache:
+                echo.g("成功从 data_sources 获取属性")
+        elif "data_sources" in db_data:
+            # 即使属性不为空，也保存 data_source_id（用于查询）
             data_sources = db_data.get("data_sources", [])
             if data_sources:
-                # 获取第一个数据源的属性（初始数据源）
-                echo.y("从 data_sources 获取属性...")
-                data_source_id = data_sources[0].get("id")
-                if data_source_id:
-                    self._data_source_id = data_source_id  # 保存数据源ID
-                    # 查询数据源以获取属性
-                    try:
-                        ds_response = self._make_request(
-                            "GET", f"/data_sources/{data_source_id}"
-                        )
-                        ds_data = ds_response.json()
-                        self._db_properties_cache = ds_data.get("properties", {})
-                        echo.g("成功从 data_sources 获取属性")
-                    except Exception as e:
-                        echo.y(f"从 data_source 获取属性失败: {e}")
-        else:
-            # 即使属性不为空，也检查是否有 data_sources（用于查询）
-            if "data_sources" in db_data:
-                data_sources = db_data.get("data_sources", [])
-                if data_sources:
-                    data_source_id = data_sources[0].get("id")
-                    if data_source_id:
-                        self._data_source_id = data_source_id  # 保存数据源ID
+                self._data_source_id = data_sources[0].get("id")
 
         # 检查属性是否为空
         if not self._db_properties_cache:
@@ -350,20 +451,10 @@ class NotionGameListV2:
             raise NotionApiError(msg="数据库ID未设置，请先创建或连接数据库")
 
         # 获取数据库属性以找到标题属性名称
-        if self._db_properties_cache is None:
-            db_response = self._make_request("GET", f"/databases/{self._database_id}")
-            db_data = db_response.json()
-            self._db_properties_cache = db_data.get("properties", {})
-
-        db_properties = self._db_properties_cache
+        db_properties = self._ensure_db_properties_cache()
 
         # 找到标题属性的实际名称
-        title_prop_name = None
-        for prop_name, prop_data in db_properties.items():
-            if prop_data.get("type") == "title":
-                title_prop_name = prop_name
-                break
-
+        title_prop_name = self._get_title_property_name(db_properties)
         if not title_prop_name:
             raise NotionApiError(msg="数据库中未找到标题属性")
 
@@ -484,38 +575,17 @@ class NotionGameListV2:
 
         try:
             # 获取数据库属性（使用缓存或重新获取）
-            if self._db_properties_cache is None:
-                db_response = self._make_request(
-                    "GET", f"/databases/{self._database_id}"
-                )
-                db_data = db_response.json()
-                self._db_properties_cache = db_data.get("properties", {})
+            db_properties = self._ensure_db_properties_cache()
 
-            db_properties = self._db_properties_cache
-
-            # 找到标题属性的实际名称（通常是第一个title类型的属性）
-            title_prop_name = None
-            for prop_name, prop_data in db_properties.items():
-                if prop_data.get("type") == "title":
-                    title_prop_name = prop_name
-                    break
-
+            # 找到标题属性的实际名称
+            title_prop_name = self._get_title_property_name(db_properties)
             if not title_prop_name:
                 # 如果属性缓存为空，尝试重新获取
                 if not db_properties:
                     echo.y("数据库属性为空，尝试重新获取...")
-                    db_response = self._make_request(
-                        "GET", f"/databases/{self._database_id}"
-                    )
-                    db_data = db_response.json()
-                    self._db_properties_cache = db_data.get("properties", {})
-                    db_properties = self._db_properties_cache
-
-                    # 再次查找标题属性
-                    for prop_name, prop_data in db_properties.items():
-                        if prop_data.get("type") == "title":
-                            title_prop_name = prop_name
-                            break
+                    self._db_properties_cache = None
+                    db_properties = self._ensure_db_properties_cache()
+                    title_prop_name = self._get_title_property_name(db_properties)
 
                 if not title_prop_name:
                     error_msg = "数据库中未找到标题属性"
@@ -525,51 +595,10 @@ class NotionGameListV2:
                     )
                     raise NotionApiError(msg=error_msg)
 
-            # 准备属性数据，使用实际的属性名称
-            properties = {
-                title_prop_name: {
-                    "type": "title",
-                    "title": [{"type": "text", "text": {"content": game.name}}],
-                }
-            }
-
-            # 添加平台属性（如果存在）
-            if "平台" in db_properties:
-                properties["平台"] = {
-                    "type": "multi_select",
-                    "multi_select": [{"name": platform} for platform in game.platforms],
-                }
-
-            # 添加游戏时长属性（如果存在）- 转换为小时
-            if "游戏时长(小时)" in db_properties:
-                playtime_hours = (
-                    round(game.playtime_minutes / 60, 2) if game.playtime_minutes else 0
-                )
-                properties["游戏时长(小时)"] = {
-                    "type": "number",
-                    "number": playtime_hours,
-                }
-
-            # 添加发布日期（如果存在）
-            if "发行日期" in db_properties:
-                release_date = self._parse_date(game)
-                if release_date:
-                    properties["发行日期"] = {
-                        "type": "date",
-                        "date": {"start": release_date},
-                    }
-
-            # 添加备注（如果存在）
-            if "备注" in db_properties and game.playtime:
-                properties["备注"] = {
-                    "type": "rich_text",
-                    "rich_text": [
-                        {
-                            "type": "text",
-                            "text": {"content": f"游戏时长(小时): {game.playtime}"},
-                        }
-                    ],
-                }
+            # 构建属性（包含标题）
+            properties = self._build_game_properties(
+                game, db_properties, include_title=True
+            )
 
             # 构建请求体
             payload = {
@@ -577,20 +606,8 @@ class NotionGameListV2:
                 "properties": properties,
             }
 
-            # 添加图标
-            icon_uri = game.icon_uri or game.logo_uri
-            if icon_uri:
-                payload["icon"] = {"type": "external", "external": {"url": icon_uri}}
-
-            # 添加封面
-            cover_img_uri = (
-                game.bg_uri or game.logo_uri if use_bg_as_cover else game.logo_uri
-            )
-            if cover_img_uri:
-                payload["cover"] = {
-                    "type": "external",
-                    "external": {"url": cover_img_uri},
-                }
+            # 添加图标和封面
+            payload.update(self._build_cover_payload(game, use_bg_as_cover))
 
             # 创建页面
             response = self._make_request("POST", "/pages", json=payload)
@@ -624,55 +641,12 @@ class NotionGameListV2:
 
         try:
             # 获取数据库属性（使用缓存或重新获取）
-            if self._db_properties_cache is None:
-                db_response = self._make_request(
-                    "GET", f"/databases/{self._database_id}"
-                )
-                db_data = db_response.json()
-                self._db_properties_cache = db_data.get("properties", {})
+            db_properties = self._ensure_db_properties_cache()
 
-            db_properties = self._db_properties_cache
-
-            # 准备属性数据，使用实际的属性名称
-            properties = {}
-
-            # 添加平台属性（如果存在）
-            if "平台" in db_properties:
-                properties["平台"] = {
-                    "type": "multi_select",
-                    "multi_select": [{"name": platform} for platform in game.platforms],
-                }
-
-            # 添加游戏时长属性（如果存在）- 转换为小时
-            if "游戏时长(小时)" in db_properties:
-                playtime_hours = (
-                    round(game.playtime_minutes / 60, 2) if game.playtime_minutes else 0
-                )
-                properties["游戏时长(小时)"] = {
-                    "type": "number",
-                    "number": playtime_hours,
-                }
-
-            # 添加发布日期（如果存在）
-            if "发行日期" in db_properties:
-                release_date = self._parse_date(game)
-                if release_date:
-                    properties["发行日期"] = {
-                        "type": "date",
-                        "date": {"start": release_date},
-                    }
-
-            # 添加备注（如果存在）
-            if "备注" in db_properties and game.playtime:
-                properties["备注"] = {
-                    "type": "rich_text",
-                    "rich_text": [
-                        {
-                            "type": "text",
-                            "text": {"content": f"游戏时长(小时): {game.playtime}"},
-                        }
-                    ],
-                }
+            # 构建属性（不包含标题）
+            properties = self._build_game_properties(
+                game, db_properties, include_title=False
+            )
 
             # 构建请求体
             payload = {}
@@ -681,20 +655,8 @@ class NotionGameListV2:
             if properties:
                 payload["properties"] = properties
 
-            # 添加图标
-            icon_uri = game.icon_uri or game.logo_uri
-            if icon_uri:
-                payload["icon"] = {"type": "external", "external": {"url": icon_uri}}
-
-            # 添加封面
-            cover_img_uri = (
-                game.bg_uri or game.logo_uri if use_bg_as_cover else game.logo_uri
-            )
-            if cover_img_uri:
-                payload["cover"] = {
-                    "type": "external",
-                    "external": {"url": cover_img_uri},
-                }
+            # 添加图标和封面
+            payload.update(self._build_cover_payload(game, use_bg_as_cover))
 
             # 如果没有需要更新的内容，直接返回成功
             if not payload:
@@ -799,7 +761,7 @@ class NotionGameListV2:
                     errors.append(game)
                 # 添加延迟以避免速率限制
                 if i < total:
-                    time.sleep(0.3)
+                    time.sleep(0.15)
                 continue
 
             # 检查是否已存在（跳过模式）

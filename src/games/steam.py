@@ -322,7 +322,6 @@ class SteamGamesLibrary(GamesLibrary):
             debug=True,
         )
         def _fetch_games():
-            self._load_cached_games(skip_free_games=skip_free_games)
             
             if skip_free_games:
                 games_iter = self.user.owned_games
@@ -394,7 +393,7 @@ class SteamGamesLibrary(GamesLibrary):
                         else None
                     ),
                     logo_uri=logo_uri,
-                    bg_uri=self._get_bg_image(game_id),
+                    bg_uri=None,
                     icon_uri=(
                         self._image_link(game_id, g.img_icon_url)
                         if getattr(g, "img_icon_url", None) is not None
@@ -406,9 +405,6 @@ class SteamGamesLibrary(GamesLibrary):
                 if skip_free_games and game_info.free:
                     continue
                 self._games[game_id] = game_info
-                if limit is not None and limit > 0 and len(self._games) >= limit:
-                    echo.y(f"\n测试模式：已获取 {limit} 个游戏，停止获取")
-                    break
 
         try:
             _fetch_games()
