@@ -1,4 +1,10 @@
-__author__ = 'SmileyBarry'
+"""
+通用装饰器与缓存工具
+
+包含 TTL 缓存属性与单例实现。
+"""
+
+__author__ = "SmileyBarry"
 
 import threading
 import time
@@ -7,10 +13,13 @@ import time
 class debug(object):
     @staticmethod
     def no_return(originalFunction, *args, **kwargs):
+        """断言函数不应返回（调试用）。"""
+
         def callNoReturn(*args, **kwargs):
             originalFunction(*args, **kwargs)
-            # This code should never return!
+            # 这段代码永远不应该返回！
             raise AssertionError("No-return function returned.")
+
         return callNoReturn
 
 
@@ -22,38 +31,35 @@ INFINITE = 0
 class cached_property(object):
     """(C) 2011 Christopher Arndt, MIT License
 
-    Decorator for read-only properties evaluated only once within TTL period.
+    仅在 TTL 期内评估一次的只读属性装饰器。
 
-    It can be used to created a cached property like this::
+    它可以用于创建这样的缓存属性::
 
         import random
 
-        # the class containing the property must be a new-style class
+        # 包含属性的类必须是一个新式类
         class MyClass(object):
-            # create property whose value is cached for ten minutes
+            # 创建一个值缓存十分钟的属性
             @cached_property(ttl=600)
             def randint(self):
-                # will only be evaluated every 10 min. at maximum.
+                # 最多每 10 分钟评估一次。
                 return random.randint(0, 100)
 
-    The value is cached  in the '_cache' attribute of the object instance that
-    has the property getter method wrapped by this decorator. The '_cache'
-    attribute value is a dictionary which has a key for every property of the
-    object which is wrapped by this decorator. Each entry in the cache is
-    created only when the property is accessed for the first time and is a
-    two-element tuple with the last computed property value and the last time
-    it was updated in seconds since the epoch.
+    该值缓存在具有由此装饰器包装的属性 getter 方法的对象实例的 '_cache' 属性中。
+    '_cache' 属性值是一个字典，其中包含对象的每个由此装饰器包装的属性的键。
+    缓存中的每个条目仅在首次访问属性时创建，并且是一个包含最后计算的属性值
+    和自纪元以来最后更新时间的两元素元组（以秒为单位）。
 
-    The default time-to-live (TTL) is 300 seconds (5 minutes). Set the TTL to
-    zero for the cached value to never expire.
+    默认的生存时间（TTL）为 300 秒（5 分钟）。将 TTL 设置为零以使缓存的值永不过期。
 
-    To expire a cached property value manually just do::
+    要手动使缓存的属性值过期，只需执行::
 
         del instance._cache[<property name>]
 
     """
 
     def __init__(self, ttl=300):
+        # ttl=0 表示永不过期
         self.ttl = ttl
 
     def __call__(self, fget, doc=None):
@@ -66,7 +72,7 @@ class cached_property(object):
     def __get__(self, inst, owner):
         now = time.time()
         value, last_update = None, None
-        if not hasattr(inst, '_cache'):
+        if not hasattr(inst, "_cache"):
             inst._cache = {}
 
         entry = inst._cache.get(self.__name__, None)
@@ -85,19 +91,21 @@ class cached_property(object):
 
 class Singleton:
     """
-    A non-thread-safe helper class to ease implementing singletons.
-    This should be used as a decorator -- not a metaclass -- to the
-    class that should be a singleton.
+    线程安全单例装饰器。
 
-    The decorated class can define one `__init__` function that
-    takes only the `self` argument. Other than that, there are
-    no restrictions that apply to the decorated class.
+    一个非线程安全的辅助类，用于简化实现单例。
+    这应该用作装饰器——而不是元类——应用于
+    应该是单例的类。
 
-    Limitations: The decorated class cannot be inherited from.
+    装饰后的类可以定义一个 `__init__` 函数，该函数
+    仅接受 `self` 参数。除此之外，对装饰后的类
+    没有任何限制。
+
+    限制：装饰后的类不能被继承。
 
     :author: Paul Manta, Stack Overflow.
              http://stackoverflow.com/a/7346105/2081507
-             (with slight modification)
+             （稍作修改）
 
     """
 
@@ -107,9 +115,9 @@ class Singleton:
 
     def __call__(self, *args, **kwargs):
         """
-        Returns the singleton instance. Upon its first call, it creates a
-        new instance of the decorated class and calls its `__init__` method.
-        On all subsequent calls, the already created instance is returned.
+        返回单例实例。首次调用时，它创建一个
+        装饰后的类的新实例并调用其 `__init__` 方法。
+        在所有后续调用中，返回已创建的实例。
 
         """
         with self._lock:

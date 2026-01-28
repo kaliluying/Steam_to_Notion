@@ -511,24 +511,37 @@ class SteamStoreApp(BaseModel):
         """
         if d is None:
             return None
-        # 递归加载所有嵌套对象
-        d["release_date"] = SteamStoreAppReleaseDate.load(d["release_date"])
-        d["support_info"] = SteamStoreAppSupportInfo.load(d["support_info"])
-        d["package_groups"] = [
-            SteamStoreAppPackageGroup.load(t) for t in d["package_groups"]
-        ]
-        d["content_descriptors"] = SteamStoreAppContentDescriptors.load(
-            d.get("content_descriptors")
-        )
-        d["screenshots"] = [
-            SteamStoreAppScreenshot.load(t) for t in d.get("screenshots", [])
-        ]
-        d["categories"] = [
-            SteamStoreAppCategory.load(t) for t in d.get("categories", [])
-        ]
-        d["genres"] = [SteamStoreAppGenre.load(t) for t in d.get("genres", [])]
-        d["achievements"] = SteamStoreAppAchievements.load(d.get("achievements"))
-        d["metacritic"] = SteamStoreAppMetacriticScore.load(d.get("metacritic"))
-        d["movies"] = [SteamStoreAppMovie.load(t) for t in d.get("movies", [])]
-        d["price_overview"] = SteamStoreAppPriceOverview.load(d.get("price_overview"))
-        return cls(**d)
+        try:
+            # 检查必需字段是否存在
+            required_fields = ["release_date", "support_info", "package_groups"]
+            for field in required_fields:
+                if field not in d:
+                    logger.warning(f"SteamStoreApp 缺少必需字段: {field}")
+                    return None
+
+            # 递归加载所有嵌套对象
+            d["release_date"] = SteamStoreAppReleaseDate.load(d["release_date"])
+            d["support_info"] = SteamStoreAppSupportInfo.load(d["support_info"])
+            d["package_groups"] = [
+                SteamStoreAppPackageGroup.load(t) for t in d["package_groups"]
+            ]
+            d["content_descriptors"] = SteamStoreAppContentDescriptors.load(
+                d.get("content_descriptors")
+            )
+            d["screenshots"] = [
+                SteamStoreAppScreenshot.load(t) for t in d.get("screenshots", [])
+            ]
+            d["categories"] = [
+                SteamStoreAppCategory.load(t) for t in d.get("categories", [])
+            ]
+            d["genres"] = [SteamStoreAppGenre.load(t) for t in d.get("genres", [])]
+            d["achievements"] = SteamStoreAppAchievements.load(d.get("achievements"))
+            d["metacritic"] = SteamStoreAppMetacriticScore.load(d.get("metacritic"))
+            d["movies"] = [SteamStoreAppMovie.load(t) for t in d.get("movies", [])]
+            d["price_overview"] = SteamStoreAppPriceOverview.load(
+                d.get("price_overview")
+            )
+            return cls(**d)
+        except (KeyError, TypeError, AttributeError) as e:
+            logger.warning(f"加载 SteamStoreApp 失败: {e}")
+            return None

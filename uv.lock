@@ -141,7 +141,7 @@ requires-dist = [
     { name = "dateparser", specifier = ">=1.2.2" },
     { name = "pyinstaller", specifier = ">=6.16.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "requests", specifier = ">=2.3.0" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "termcolor", specifier = ">=1.1.0" },
 ]
 

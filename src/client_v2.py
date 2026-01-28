@@ -14,10 +14,10 @@ import requests
 
 import dateparser
 
-from src.errors import ServiceError, NotionApiError
+from src.errors import ServiceError, NotionApiError, DataParseError
 from src.games.base import GameInfo
 
-from .utils import echo, color
+from src.utils import echo, color
 
 
 class NotionGameListV2:
@@ -112,26 +112,76 @@ class NotionGameListV2:
 
                 # 处理速率限制
                 if response.status_code == 429:
-                    retry_after = int(response.headers.get("Retry-After", retry_delay))
+                    retry_after_header = response.headers.get("Retry-After")
+                    try:
+                        retry_after = (
+                            int(retry_after_header)
+                            if retry_after_header
+                            else retry_delay
+                        )
+                    except ValueError:
+                        retry_after = retry_delay
                     if attempt < max_retries - 1:
                         echo.y(
                             f"速率限制，等待 {retry_after} 秒后重试 ({attempt + 1}/{max_retries})..."
                         )
                         time.sleep(retry_after)
                         continue
+                    else:
+                        raise NotionApiError(
+                            message=f"Notion API 速率限制，已达最大重试次数",
+                            code=429,
+                            details={"url": url, "method": method},
+                        )
 
                 # 处理其他错误
                 if response.status_code >= 400:
-                    error_data = response.json() if response.content else {}
+                    try:
+                        error_data = response.json() if response.content else {}
+                    except Exception:
+                        error_data = {
+                            "message": f"HTTP {response.status_code}, 响应解析失败"
+                        }
                     error_msg = error_data.get(
                         "message", f"HTTP {response.status_code}"
                     )
                     raise NotionApiError(
-                        msg=f"Notion API错误: {error_msg}", error=response
+                        message=f"Notion API错误: {error_msg}",
+                        code=response.status_code,
+                        details={"url": url, "method": method},
+                        original_exception=None,
                     )
 
                 return response
 
+            except requests.exceptions.Timeout as e:
+                if attempt < max_retries - 1:
+                    echo.y(
+                        f"请求超时，{retry_delay}秒后重试 ({attempt + 1}/{max_retries}): {e}"
+                    )
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                raise NotionApiError(
+                    message=f"Notion API 请求超时",
+                    code=408,
+                    details={"url": url, "method": method},
+                    original_exception=e,
+                ) from e
+            except requests.exceptions.ConnectionError as e:
+                if attempt < max_retries - 1:
+                    echo.y(
+                        f"连接失败，{retry_delay}秒后重试 ({attempt + 1}/{max_retries}): {e}"
+                    )
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                raise NotionApiError(
+                    message=f"Notion API 连接失败",
+                    code=503,
+                    details={"url": url, "method": method},
+                    original_exception=e,
+                ) from e
             except requests.exceptions.RequestException as e:
                 if attempt < max_retries - 1:
                     echo.y(
@@ -140,7 +190,19 @@ class NotionGameListV2:
                     time.sleep(retry_delay)
                     retry_delay *= 2
                     continue
-                raise NotionApiError(msg=f"请求失败: {e}", error=e)
+                raise NotionApiError(
+                    message=f"Notion API 请求失败: {e}",
+                    code=503,
+                    details={"url": url, "method": method},
+                    original_exception=e,
+                ) from e
+            except Exception as e:
+                raise NotionApiError(
+                    message=f"Notion API 请求失败: {e}",
+                    code=500,
+                    details={"url": url, "method": method},
+                    original_exception=e,
+                ) from e
 
     def create_game_page(
         self, title: str = "Steam Game Library", description: str = "My game list"
@@ -160,7 +222,8 @@ class NotionGameListV2:
         """
         if not self.parent_page_id:
             raise NotionApiError(
-                msg="需要提供 parent_page_id 才能创建数据库。请通过环境变量 NOTION_PAGE_ID 或构造函数参数提供。"
+                message="需要提供 parent_page_id 才能创建数据库。请通过环境变量 NOTION_PAGE_ID 或构造函数参数提供。",
+                code=400,
             )
 
         echo.y("正在创建Notion数据库...")
@@ -224,14 +287,23 @@ class NotionGameListV2:
             else:
                 echo.r("错误：数据库属性仍然为空！")
                 raise NotionApiError(
-                    msg="数据库创建成功但属性为空，请检查 API 版本和属性定义"
+                    message="数据库创建成功但属性为空，请检查 API 版本和属性定义",
+                    code=500,
+                    details={"database_id": self._database_id},
                 )
 
             # 返回兼容旧接口的字典
             return {"id": self._database_id, "collection": {"id": self._database_id}}
 
+        except NotionApiError:
+            raise
         except Exception as e:
-            raise NotionApiError(msg=f"创建Notion数据库失败: {e}", error=e)
+            raise NotionApiError(
+                message=f"创建Notion数据库失败: {e}",
+                code=500,
+                details={"parent_page_id": self.parent_page_id},
+                original_exception=e,
+            ) from e
 
     def _get_title_property_name(self, db_properties: dict) -> tp.Optional[str]:
         """
@@ -334,9 +406,7 @@ class NotionGameListV2:
         if icon_uri:
             payload["icon"] = {"type": "external", "external": {"url": icon_uri}}
 
-        cover_img_uri = (
-            game.bg_uri or game.logo_uri if use_bg_as_cover else game.logo_uri
-        )
+        cover_img_uri = game.bg_uri if use_bg_as_cover else game.logo_uri
         if cover_img_uri:
             payload["cover"] = {"type": "external", "external": {"url": cover_img_uri}}
 
@@ -427,7 +497,7 @@ class NotionGameListV2:
                 "请在 Notion 中为数据库添加一个标题类型的属性（通常是 'Name' 或 '游戏名'）。"
             )
             raise NotionApiError(
-                msg="数据库中未找到标题属性，无法添加游戏。请先在 Notion 中为数据库添加一个标题类型的属性。"
+                message="数据库中未找到标题属性，无法添加游戏。请先在 Notion 中为数据库添加一个标题类型的属性。"
             )
 
     def get_existing_game_names(self) -> tp.Set[str]:
@@ -448,7 +518,7 @@ class NotionGameListV2:
             Dict[str, str]: 游戏名称到页面ID的映射
         """
         if not self._database_id:
-            raise NotionApiError(msg="数据库ID未设置，请先创建或连接数据库")
+            raise NotionApiError(message="数据库ID未设置，请先创建或连接数据库")
 
         # 获取数据库属性以找到标题属性名称
         db_properties = self._ensure_db_properties_cache()
@@ -456,7 +526,7 @@ class NotionGameListV2:
         # 找到标题属性的实际名称
         title_prop_name = self._get_title_property_name(db_properties)
         if not title_prop_name:
-            raise NotionApiError(msg="数据库中未找到标题属性")
+            raise NotionApiError(message="数据库中未找到标题属性")
 
         existing_map = {}
         next_cursor = None
@@ -511,7 +581,8 @@ class NotionGameListV2:
         Returns:
             str: 日期字符串 (YYYY-MM-DD) 或 None
         """
-        date_str = game.release_date
+        # GameInfo.release_date 是字符串类型，直接使用
+        date_str = game.release_date if game.release_date else None
         if not date_str:
             return None
 
@@ -530,16 +601,12 @@ class NotionGameListV2:
             if parsed_date:
                 return parsed_date.strftime("%Y-%m-%d")
             else:
-                # 解析失败，输出警告
                 echo.r(
-                    f"\n游戏 '{game.name}:{game.id}' | 发布日期: '{date_str}' 无法解析 | 跳过"
+                    f"游戏 '{game.name}:{game.id}' | 发布日期: '{date_str}' 无法解析"
                 )
                 return None
         except Exception as e:
-            # 解析出错，输出错误信息
-            echo.r(
-                f"\n游戏 '{game.name}:{game.id}' | 解析日期 '{date_str}' 时出错: {e} | 跳过"
-            )
+            echo.r(f"游戏 '{game.name}:{game.id}' | 解析日期 '{date_str}' 时出错: {e}")
             return None
 
     def add_game(
@@ -564,7 +631,7 @@ class NotionGameListV2:
             bool: 是否添加成功（如果因为已存在而跳过，返回True）
         """
         if not self._database_id:
-            raise NotionApiError(msg="数据库ID未设置，请先创建或连接数据库")
+            raise NotionApiError(message="数据库ID未设置，请先创建或连接数据库")
 
         # 检查是否已存在
         if skip_if_exists:
@@ -593,7 +660,7 @@ class NotionGameListV2:
                     echo.y(
                         "提示：Notion 数据库必须包含至少一个标题类型的属性才能添加页面。"
                     )
-                    raise NotionApiError(msg=error_msg)
+                    raise NotionApiError(message=error_msg)
 
             # 构建属性（包含标题）
             properties = self._build_game_properties(
@@ -637,7 +704,7 @@ class NotionGameListV2:
             bool: 是否更新成功
         """
         if not self._database_id:
-            raise NotionApiError(msg="数据库ID未设置，请先创建或连接数据库")
+            raise NotionApiError(message="数据库ID未设置，请先创建或连接数据库")
 
         try:
             # 获取数据库属性（使用缓存或重新获取）

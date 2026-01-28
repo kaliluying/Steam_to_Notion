@@ -80,7 +80,7 @@ class GamesLibrary(metaclass=ABCMeta):
         Returns:
             List[TGameID]: 游戏ID列表
         """
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def get_game_info(self, game_id: TGameID) -> GameInfo:
@@ -93,4 +93,4 @@ class GamesLibrary(metaclass=ABCMeta):
         Returns:
             GameInfo: 游戏信息对象
         """
-        raise NotImplementedError
+        pass

@@ -1,120 +1,164 @@
-__author__ = 'SmileyBarry'
+"""
+Steam API 异常体系与响应错误映射
+
+通过 HTTP 状态码转为更语义化的异常类型。
+"""
+
+__author__ = "SmileyBarry"
 
 from .decorators import debug
 
 
 class APIException(Exception):
     """
+    API 异常基类。
+
     Base class for all API exceptions.
     """
+
     pass
 
 
 class AccessException(APIException):
     """
-    You are attempting to query an object that you have no permission to query. (E.g.: private user,
-    hidden screenshot, etc.)
+    权限不足或访问被拒绝（如私密用户）。
+
+    您正在尝试查询您没有权限查询的对象。（例如：私密用户、
+    隐藏的截图等）
     """
+
     pass
 
 
 class APIUserError(APIException):
     """
-    An API error caused by a user error, like wrong data or just empty results for a query.
+    由用户输入导致的错误（如参数错误或空结果）。
+
+    由用户错误引起的 API 错误，例如错误的数据或查询的空结果。
     """
+
     pass
 
 
 class UserNotFoundError(APIUserError):
     """
-    The specified user was not found on the Steam Community. (Bad vanity URL? Non-existent ID?)
+    用户未找到（无效的 vanity URL 或 SteamID）。
+
+    在 Steam 社区上找不到指定的用户。（错误的个性化 URL？不存在的 ID？）
     """
+
     pass
 
 
 class APIError(APIException):
     """
-    An API error signifies a problem with the server, a temporary issue or some other easily-repairable
-    problem.
+    API 服务端错误或临时异常。
+
+    API 错误表示服务器有问题、临时问题或其他容易修复的问题。
     """
+
     pass
 
 
 class APIFailure(APIException):
     """
-    An API failure signifies a problem with your request (e.g.: invalid API), a problem with your data,
-    or any error that resulted from improper use.
+    请求失败（参数、配置或权限问题）。
+
+    API 失败表示您的请求有问题（例如：无效的 API）、数据有问题，
+    或因不当使用导致的任何错误。
     """
+
     pass
 
 
 class APIBadCall(APIFailure):
     """
-    Your API call doesn't match the API's specification. Check your arguments, service name, command &
-    version.
+    调用参数与接口规范不匹配。
+
+    您的 API 调用与 API 的规范不匹配。请检查您的参数、服务名称、命令和版本。
     """
+
     pass
 
 
 class APINotFound(APIFailure):
     """
-    The API you tried to call does not exist. (404)
+    接口或服务不存在（404）。
+
+    您尝试调用的 API 不存在。（404）
     """
+
     pass
 
 
 class APIUnauthorized(APIFailure):
     """
-    The API you've attempted to call either requires a key, or your key has insufficient permissions.
-    If you're requesting user details, make sure their privacy level permits you to do so, or that you've
-    properly authorised said user. (401)
+    未授权或权限不足（401）。
+
+    您尝试调用的 API 需要密钥，或者您的密钥权限不足。
+    如果您正在请求用户详细信息，请确保其隐私级别允许您这样做，
+    或者您已正确授权该用户。（401）
     """
+
     pass
 
 
 class APIKeyRequired(APIFailure):
     """
-    This API requires an API key to call and does not support anonymous requests.
+    该接口必须提供 API Key。
+
+    此 API 需要 API 密钥才能调用，并且不支持匿名请求。
     """
+
     pass
 
 
 class APIPrivate(APIFailure):
     """
-    The API you're trying to call requires a privileged API key. Your existing key is not allowed to call this.
+    需要更高权限的 API Key。
+
+    您尝试调用的 API 需要特权 API 密钥。您现有的密钥不允许调用此 API。
     """
 
 
 class APIConfigurationError(APIFailure):
     """
-    There's either no APIConnection defined, or the parameters given to "APIConnection" or "APIInterface" are
-    invalid.
+    配置错误（APIConnection/APIInterface 参数不正确）。
+
+    没有定义 APIConnection，或者给 "APIConnection" 或 "APIInterface" 的参数无效。
     """
+
     pass
 
 
 def check(response):
     """
+    根据 HTTP 状态码抛出对应异常。
+
     :type response: requests.Response
     """
     if response.status_code // 100 == 4:
         if response.status_code == 404:
             raise APINotFound(
-                "The function or service you tried to call does not exist.")
+                "The function or service you tried to call does not exist."
+            )
         elif response.status_code == 401:
             raise APIUnauthorized("This API is not accessible to you.")
         elif response.status_code == 403:
-            if '?key=' in response.request.url or '&key=' in response.request.url:
+            if "?key=" in response.request.url or "&key=" in response.request.url:
                 raise APIPrivate(
-                    "You have no permission to use this API, or your key may be invalid.")
+                    "You have no permission to use this API, or your key may be invalid."
+                )
             else:
                 raise APIKeyRequired("This API requires a key to call.")
         elif response.status_code == 400:
             raise APIBadCall(
-                "The parameters you sent didn't match this API's requirements.")
+                "The parameters you sent didn't match this API's requirements."
+            )
         else:
             raise APIFailure(
-                "Something is wrong with your configuration, parameters or environment.")
+                "Something is wrong with your configuration, parameters or environment."
+            )
     elif response.status_code // 100 == 5:
         raise APIError("The API server has encountered an unknown error.")
     else:

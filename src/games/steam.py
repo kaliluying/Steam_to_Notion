@@ -3,6 +3,8 @@ Steam游戏库处理模块
 用于从Steam API和Steam商店获取游戏信息
 """
 
+import json
+import logging
 import os
 import re
 import typing as tp
@@ -10,12 +12,19 @@ import typing as tp
 import requests
 
 from src.api.steam import steamapi
-from src.core import is_valid_link
-from src.errors import SteamApiError, SteamApiNotFoundError, SteamStoreApiError
+from src.errors import (
+    SteamApiError,
+    SteamApiNotFoundError,
+    SteamStoreApiError,
+    NetworkError,
+    DataParseError,
+)
 from src.models.steam import SteamStoreApp
 from src.utils import color, echo, retry, dump_to_file, load_from_file
 
 from .base import GameInfo, GamesLibrary, TGameID
+
+logger = logging.getLogger(__name__)
 
 
 # 类型别名
@@ -40,6 +49,14 @@ class SteamStoreApi:
         """
         self.session = requests.Session()  # HTTP会话对象
         self._cache = {}  # 游戏信息缓存
+
+    def __enter__(self):
+        """支持上下文管理器"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """退出时关闭session"""
+        self.session.close()
 
     @retry(
         SteamStoreApiError,
@@ -68,27 +85,87 @@ class SteamStoreApi:
         game_id = str(game_id)
         # 检查缓存
         if game_id in self._cache:
+            logger.debug(f"从缓存获取游戏 {game_id}")
             return self._cache[game_id]
+
         try:
             # 请求Steam商店API
             r = self.session.get(self.API_HOST.format(game_id), timeout=3)
             if not r.ok:
+                logger.error(f"Steam Store API 返回错误状态码: {r.status_code}")
                 raise SteamStoreApiError(
-                    f"无法获取 {r.url}, 状态码: {r.status_code}, 响应: {r.text}"
+                    message=f"无法获取 {r.url}, 状态码: {r.status_code}",
+                    details={"url": r.url, "status_code": r.status_code},
+                    original_exception=None,
                 )
 
-            response_body = r.json()[str(game_id)]
-            if not response_body["success"]:
-                raise SteamApiNotFoundError(f"游戏 {game_id} 请求失败")
+            # JSON 解析错误
+            try:
+                response_data = r.json()
+                response_body = response_data.get(str(game_id))
+            except json.JSONDecodeError as e:
+                logger.error(f"Steam Store API 响应JSON解析失败: {e}")
+                raise DataParseError(
+                    message="Steam Store API 响应格式错误",
+                    details={"game_id": game_id},
+                    original_exception=e,
+                ) from e
+
+            if not response_body or not response_body.get("success"):
+                logger.warning(f"游戏 {game_id} 在Steam商店中未找到或请求失败")
+                raise SteamApiNotFoundError(
+                    message=f"游戏 {game_id} 请求失败或未找到",
+                    details={"game_id": game_id},
+                )
 
             # 解析并缓存游戏信息
             self._cache[game_id] = SteamStoreApp.load(response_body["data"])
+            logger.debug(f"成功获取并缓存游戏 {game_id}: {self._cache[game_id].name}")
 
             return self._cache[game_id]
-        except (SteamApiNotFoundError, SteamStoreApiError):
+
+        except requests.exceptions.Timeout as e:
+            logger.error(f"Steam Store API 请求超时: {e}")
+            raise NetworkError(
+                message=f"Steam Store API 请求超时",
+                details={"game_id": game_id},
+                original_exception=e,
+            ) from e
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"Steam Store API 连接失败: {e}")
+            raise NetworkError(
+                message=f"Steam Store API 连接失败",
+                details={"game_id": game_id},
+                original_exception=e,
+            ) from e
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Steam Store API 请求异常: {e}")
+            raise NetworkError(
+                message=f"Steam Store API 请求失败: {e}",
+                details={"game_id": game_id},
+                original_exception=e,
+            ) from e
+        except (
+            SteamApiNotFoundError,
+            SteamStoreApiError,
+            DataParseError,
+            NetworkError,
+        ):
             raise
+        except KeyError as e:
+            logger.error(f"Steam Store API 响应数据格式错误: {e}")
+            raise DataParseError(
+                message=f"Steam Store API 响应数据格式错误",
+                details={"game_id": game_id},
+                original_exception=e,
+            ) from e
         except Exception as e:
-            raise SteamApiError(error=e)
+            logger.exception(f"获取游戏 {game_id} 信息时发生未知错误: {e}")
+            raise SteamApiError(
+                message=f"获取游戏信息失败: {e}",
+                details={"game_id": game_id},
+                original_exception=e,
+            ) from e
 
 
 class SteamGamesLibrary(GamesLibrary):
@@ -130,9 +207,18 @@ class SteamGamesLibrary(GamesLibrary):
             SteamApiError: API连接失败
         """
         try:
-            return steamapi.core.APIConnection(api_key=api_key, validate_key=True)
+            api_connection = steamapi.core.APIConnection(
+                api_key=api_key, validate_key=True
+            )
+            logger.info("Steam API 连接成功")
+            return api_connection
         except Exception as e:
-            raise SteamApiError(error=e)
+            logger.error(f"Steam API 连接失败: {e}")
+            raise SteamApiError(
+                message=f"Steam API 连接失败: {e}",
+                details={"api_key_prefix": api_key[:8] + "****" if api_key else None},
+                original_exception=e,
+            ) from e
 
     def _get_user(self, user_id: TSteamUserID):
         """
@@ -149,15 +235,27 @@ class SteamGamesLibrary(GamesLibrary):
         """
         try:
             # 根据user_id类型选择不同的构造方式
-            return (
+            user = (
                 steamapi.user.SteamUser(user_id)
                 if isinstance(user_id, int)
                 else steamapi.user.SteamUser(userurl=user_id)
             )
-        except steamapi.errors.UserNotFoundError:
-            raise SteamApiError(msg=f"用户 {user_id} 未找到")
+            logger.info(f"Steam 用户获取成功: {user_id}")
+            return user
+        except steamapi.errors.UserNotFoundError as e:
+            logger.warning(f"Steam 用户未找到: {user_id}")
+            raise SteamApiNotFoundError(
+                message=f"用户 {user_id} 未找到",
+                details={"user_id": user_id},
+                original_exception=e,
+            ) from e
         except Exception as e:
-            raise SteamApiError(error=e)
+            logger.error(f"获取 Steam 用户失败: {e}")
+            raise SteamApiError(
+                message=f"获取用户信息失败: {e}",
+                details={"user_id": str(user_id)},
+                original_exception=e,
+            ) from e
 
     @classmethod
     def login(
@@ -224,28 +322,6 @@ class SteamGamesLibrary(GamesLibrary):
         """
         return self.IMAGE_HOST + f"{game_id}/{img_hash}.jpg"
 
-    def _get_bg_image(self, game_id: TGameID) -> tp.Optional[str]:
-        """
-        获取游戏背景图片URL
-        尝试多种可能的背景图片路径
-
-        Args:
-            game_id: 游戏ID
-
-        Returns:
-            str: 背景图片URL，如果不存在则返回None
-        """
-        _bg_img = "https://steamcdn-a.akamaihd.net/steam/apps/{game_id}/{bg}.jpg"
-        # 尝试第一种背景图片路径
-        bg_link = _bg_img.format(game_id=game_id, bg="page.bg")
-        if is_valid_link(bg_link):
-            return bg_link
-        # 尝试第二种背景图片路径
-        bg_link = _bg_img.format(game_id=game_id, bg="page_bg_generated")
-        if is_valid_link(bg_link):
-            return bg_link
-        return None
-
     @staticmethod
     def _playtime_format(playtime_in_minutes: int) -> str:
         """
@@ -309,9 +385,17 @@ class SteamGamesLibrary(GamesLibrary):
         Raises:
             SteamApiError: API请求错误
         """
+        # 如果已有缓存且不强制刷新，直接返回
+        if self._games and not force:
+            return
+
         if force or not self._games:
             self._load_cached_games(skip_free_games=skip_free_games)
-        
+
+        # 再次检查缓存，避免重复获取
+        if self._games and not force:
+            return
+
         @retry(
             SteamApiError,
             retry_num=3,
@@ -322,7 +406,6 @@ class SteamGamesLibrary(GamesLibrary):
             debug=True,
         )
         def _fetch_games():
-            
             if skip_free_games:
                 games_iter = self.user.owned_games
             else:
@@ -348,6 +431,7 @@ class SteamGamesLibrary(GamesLibrary):
                     " " * 100 + f"\r正在获取 [{i}/{number_of_games}]: {g.name}",
                     end="\r",
                 )
+
                 steam_game = None
                 if not library_only:
                     try:
@@ -356,9 +440,7 @@ class SteamGamesLibrary(GamesLibrary):
                         pass
 
                     if steam_game is None and skip_non_steam:
-                        echo.m(
-                            f"游戏 {g.name} id:{game_id} 在Steam商店中未找到，跳过"
-                        )
+                        echo.m(f"游戏 {g.name} id:{game_id} 在Steam商店中未找到，跳过")
                         self._store_skipped.append(game_id)
                         continue
 
@@ -379,7 +461,7 @@ class SteamGamesLibrary(GamesLibrary):
                     platforms=[PLATFORM],
                     release_date=(
                         steam_game.release_date.date
-                        if steam_game is not None
+                        if steam_game is not None and steam_game.release_date
                         else None
                     ),
                     playtime=(
@@ -399,9 +481,12 @@ class SteamGamesLibrary(GamesLibrary):
                         if getattr(g, "img_icon_url", None) is not None
                         else None
                     ),
-                    free=steam_game.is_free if steam_game is not None else None,
+                    free=steam_game.is_free if steam_game is not None else False,
                 )
-                self._cache_game(game_info)
+                # 没有打开跳过免费游戏选项，或者游戏不是免费的，缓存游戏信息
+                if not (skip_free_games and game_info.free):
+                    self._cache_game(game_info)
+                # 打开跳过免费游戏选项后并且游戏是免费的，跳过
                 if skip_free_games and game_info.free:
                     continue
                 self._games[game_id] = game_info
@@ -409,7 +494,10 @@ class SteamGamesLibrary(GamesLibrary):
         try:
             _fetch_games()
         except Exception as e:
-            raise SteamApiError(error=e)
+            raise SteamApiError(
+                message=f"获取游戏库失败: {e}",
+                original_exception=e,
+            ) from e
 
     def get_games_list(self, **kwargs) -> tp.List[TGameID]:
         """
@@ -441,6 +529,6 @@ class SteamGamesLibrary(GamesLibrary):
         self._fetch_library_games(**kwargs)
 
         if game_id not in self._games:
-            raise SteamApiError(msg=f"未找到ID为 {game_id} 的游戏")
+            raise SteamApiError(message=f"未找到ID为 {game_id} 的游戏")
 
         return self._games[game_id]

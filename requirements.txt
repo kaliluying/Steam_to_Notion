@@ -1,5 +1,5 @@
 # 核心依赖
-requests>=2.3.0
+requests>=2.31.0
 python-dotenv>=1.0.0
 
 # 终端输出和颜色支持

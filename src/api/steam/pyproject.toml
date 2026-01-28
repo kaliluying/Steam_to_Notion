@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "steamapi"
+version = "0.1"
+description = "An object-oriented Python 3.12+ library for accessing the Steam Web API"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+  {name = "GML", email = ""}
+]
+dependencies = [
+  "requests>=2.32.5"
+]
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12"
+]
+
+[project.urls]
+Homepage = "https://github.com/kaliluying/steaminfo"
+
+[tool.setuptools]
+packages = ["steaminfo"]

@@ -3,7 +3,10 @@
 提供从字典加载对象的基础功能
 """
 
+import logging
 import typing as tp
+
+logger = logging.getLogger(__name__)
 
 
 class BaseModel:
@@ -18,11 +21,15 @@ class BaseModel:
         从字典加载模型对象
 
         Args:
-            d: 包含模型数据的字典，如果为None则返回None
+            d: 包含模型数据的字典，如果为None或非字典则返回None
 
         Returns:
             模型实例或None
         """
-        if d is None:
+        if d is None or not isinstance(d, dict):
             return None
-        return cls(**d)
+        try:
+            return cls(**d)
+        except (TypeError, KeyError) as e:
+            logger.warning(f"加载 {cls.__name__} 失败: {e}")
+            return None

@@ -4,12 +4,15 @@
 """
 
 import json
+import logging
 import os
 import sys
 import time
 from functools import wraps
 
 from termcolor import colored
+
+logger = logging.getLogger(__name__)
 
 # Windows平台需要初始化colorama以支持颜色输出
 if sys.platform == "win32":
@@ -125,12 +128,16 @@ def load_from_file(filename):
         filename: 文件名
 
     Returns:
-        dict: 从文件加载的字典，如果文件不存在则返回空字典
+        dict: 从文件加载的字典，如果文件不存在或加载失败则返回空字典
     """
     if not os.path.exists(filename):
         return {}
-    with open(filename, "r") as f:
-        return json.load(f)
+    try:
+        with open(filename, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, PermissionError, OSError) as e:
+        logger.warning(f"加载文件 {filename} 失败: {e}")
+        return {}
 
 
 def dump_to_file(d, filename):
@@ -141,8 +148,11 @@ def dump_to_file(d, filename):
         d: 要保存的字典
         filename: 文件名
     """
-    with open(filename, "w") as f:
-        json.dump(d, f)
+    try:
+        with open(filename, "w") as f:
+            json.dump(d, f)
+    except (PermissionError, OSError, TypeError, json.JSONEncodeError) as e:
+        logger.error(f"保存文件 {filename} 失败: {e}")
 
 
 def retry(
@@ -182,7 +192,7 @@ def retry(
                     return f(*args, **kwargs)
                 except exceptions as e:
                     # 如果指定了错误代码且不匹配，则直接抛出或返回None
-                    if on_code is not None and on_code != e.code:
+                    if on_code is not None and hasattr(e, "code") and on_code != e.code:
                         if raise_on_error:
                             raise
                         return None
@@ -196,7 +206,7 @@ def retry(
                     _delay *= backoff
                     if debug:
                         # 显示调试信息
-                        print_args = args if args else ""
+                        print_args = str(args) if args else ""
                         msg = (
                             str(
                                 f"函数: {f.__name__} 参数: {print_args}, kwargs: {kwargs}\n"
@@ -207,7 +217,7 @@ def retry(
                         )
                         echo.m("\n" + msg)
                         # 倒计时显示
-                        for s in range(_delay, 1, -1):
+                        for s in range(int(_delay), 1, -1):
                             echo.m(" " * 20 + f"\r等待 {s} 秒...", end="\r")
                             time.sleep(1)
                     else:
